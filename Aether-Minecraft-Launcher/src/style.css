@@ -1,0 +1,112 @@
+/* ============================================================
+   style.css — 全局样式入口
+   ============================================================
+   本文件作为应用的全局样式入口，主要负责：
+   1. 引入 Tailwind CSS v4 和 Flowbite 样式库
+   2. 定义全局 CSS 关键帧动画
+   3. 提供可复用的动画工具类（供组件通过 class 直接调用）
+   4. 高 DPI 渲染优化
+   ============================================================ */
+
+/* --- 样式库导入 --- */
+@import "tailwindcss";  /* Tailwind CSS v4 原子化样式框架 */
+@import "flowbite";     /* Flowbite UI 组件库（基于 Tailwind） */
+
+
+/* ==================================================================
+   高 DPI / Retina 渲染优化
+   ==================================================================
+   确保所有元素在各缩放级别下保持锐利和清晰。
+   ================================================================== */
+
+/* 所有 SVG 和图片使用矢量平滑缩放 */
+svg, img {
+  shape-rendering: geometricPrecision;
+}
+
+/* 确保文字和 UI 在 Retina 屏幕上的清晰渲染 */
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  -webkit-tap-highlight-color: transparent;
+}
+
+
+/* ==================================================================
+   全局动画关键帧定义
+   ==================================================================
+   所有动画遵循以下命名约定：
+   - 动画名称使用连字符小写（如 fade-in）
+   - 对应的工具类使用 anim- 前缀（如 anim-fade-in）
+   ================================================================== */
+
+/* --- fade-in：纯淡入，无位移 --- */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* --- slide-up：从下方 16px 淡入滑入 --- */
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* --- slide-down：从上方 12px 淡入滑入 --- */
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* --- scale-in：从 0.92 缩放淡入 --- */
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* --- slide-in-left：从左侧 16px 淡入滑入 --- */
+@keyframes slide-in-left {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* --- pulse-glow：脉冲发光效果（可用于激活状态指示）--- */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.3); }
+  50%      { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0); }
+}
+
+
+/* ==================================================================
+   动画工具类
+   ==================================================================
+   特点：
+   - 使用 animation-fill-mode: both，确保元素在动画前保持起始状态
+   - 可直接在组件 template 中通过 class 使用，无需重复定义
+   示例：<div class="anim-slide-up">内容</div>
+   ================================================================== */
+
+.anim-fade-in     { animation: fade-in 0.35s ease-out both; }
+.anim-slide-up    { animation: slide-up 0.4s ease-out both; }
+.anim-slide-down  { animation: slide-down 0.3s ease-out both; }
+.anim-scale-in    { animation: scale-in 0.3s ease-out both; }
+.anim-slide-left  { animation: slide-in-left 0.35s ease-out both; }
+
+
+/* --- 逐项延迟工具（用于列表/网格的错落入场）---
+   配合上述动画类使用，例如：
+   <div class="anim-slide-up anim-stagger-2">第2项</div>
+   每个等级递增 50ms，最多支持 5 项错落。
+   ================================================================ */
+.anim-stagger-1 { animation-delay: 0.05s; }
+.anim-stagger-2 { animation-delay: 0.10s; }
+.anim-stagger-3 { animation-delay: 0.15s; }
+.anim-stagger-4 { animation-delay: 0.20s; }
+.anim-stagger-5 { animation-delay: 0.25s; }
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #6b7280; }
