@@ -73,7 +73,7 @@ const loaders = [
   <div class="max-w-5xl mx-auto">
 
     <!-- === 欢迎区块 === -->
-    <AppSection title="欢迎使用 Aether Launcher" description="快速启动和管理你的 Minecraft 版本" />
+    <AppSection title="欢迎使用 Aether Minecraft Launcher" description="快速启动和管理你的 Minecraft 版本" />
 
     <!-- === 版本卡片网格 ===
          3列响应式网格，大屏3列，小屏1列

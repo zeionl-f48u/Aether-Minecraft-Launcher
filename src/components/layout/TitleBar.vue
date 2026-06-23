@@ -28,7 +28,7 @@ import { useWindowControls } from "../../composables/useWindowControls.js"; // ç
 defineProps({
   title: {
     type: String,
-    default: "Aether Launcher",
+    default: "Aether Minecraft Launcher",
   },
 });
 
