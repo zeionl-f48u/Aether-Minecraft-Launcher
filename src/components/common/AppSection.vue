@@ -40,8 +40,8 @@ defineProps({
       避免传入空字符串时产生多余的 DOM 节点
     -->
     <div v-if="title || description" class="mb-4">
-      <h2 v-if="title" class="text-xl font-bold text-white">{{ title }}</h2>
-      <p v-if="description" class="mt-1 text-sm text-gray-400">{{ description }}</p>
+      <h2 v-if="title" class="text-xl font-bold text-[var(--text-primary)]">{{ title }}</h2>
+      <p v-if="description" class="mt-1 text-sm text-[var(--text-secondary)]">{{ description }}</p>
     </div>
     <!-- 默认插槽：区块内容 -->
     <slot />

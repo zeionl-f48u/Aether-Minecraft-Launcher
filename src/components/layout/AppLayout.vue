@@ -25,7 +25,8 @@
 
 <script setup>
 // ---------- Vue 生命周期 ----------
-import { onMounted } from "vue";
+import { onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 
 // ---------- Flowbite 初始化 ----------
 import { initFlowbite } from "flowbite";
@@ -34,26 +35,40 @@ import { initFlowbite } from "flowbite";
 import { useTheme } from "../../composables/useTheme.js";
 
 // ---------- 布局子组件 ----------
-import TitleBar from "./TitleBar.vue";  // 顶部标题栏（固定定位）
-import Sidebar from "./Sidebar.vue";    // 左侧导航栏（固定定位）
+import TitleBar from "./TitleBar.vue";
+import Sidebar from "./Sidebar.vue";
 
-// ---------- 主题初始化 ----------
+// ---------- 主题与路由 ----------
 const { toggleTheme } = useTheme();
+const route = useRoute();
+const router = useRouter();
+
+/** 当前激活的页面 ID，从路由名推断 */
+const activePage = ref(route.name || "home");
+
+/** 监听路由变化，同步激活状态 */
+watch(
+  () => route.name,
+  (name) => {
+    activePage.value = name || "home";
+  }
+);
 
 /**
- * onMounted — 组件挂载后初始化 Flowbite
+ * 处理侧边栏导航点击
+ * @param {string} page - 目标页面名称
  */
+function onNavigate(page) {
+  activePage.value = page;
+  router.push({ name: page });
+}
+
 onMounted(() => {
   initFlowbite();
 });
 </script>
 
 <template>
-  <!--
-    最外层容器：
-      - 使用 CSS 变量实现 Win11 经典渐变背景
-      - 深色/浅色自动适配
-  -->
   <div
     class="flex h-screen w-screen overflow-hidden transition-colors duration-300"
     :style="{
@@ -61,23 +76,17 @@ onMounted(() => {
       color: 'var(--text-primary)',
     }"
   >
-    <!-- TitleBar：fixed 固定顶部，不占文档流 -->
     <TitleBar
       title="Aether Launcher"
       @toggle-theme="toggleTheme"
     />
 
-    <!-- Sidebar：fixed 固定左侧，在标题栏下方 -->
-    <Sidebar active="home" />
+    <Sidebar
+      :active="activePage"
+      @navigate="onNavigate"
+    />
 
-    <!--
-      主内容区域：
-        - flex-1：撑满剩余宽度
-        - ml-[60px]：为左侧固定侧边栏留出空间
-        - mt-[44px]：为顶部固定标题栏留出空间
-        - overflow-auto：内容超出时可滚动
-        - p-6：内边距
-    -->
+    <!-- 主内容区域 -->
     <main class="flex-1 ml-[60px] mt-[44px] overflow-auto p-6">
       <slot />
     </main>

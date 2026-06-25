@@ -26,6 +26,9 @@ use crate::components::auth::{self, generate_offline_uuid, parse_head_skin};
 use crate::components::client::{Client, ClientConfig, ClientError};
 use crate::components::download::fabric::{FabricDownloadExt, FabricError};
 use crate::components::download::forge::{ForgeDownloadExt, ForgeError};
+use crate::components::download::neoforge::{NeoForgeDownloadExt, NeoForgeError};
+use crate::components::download::optifine::{OptifineDownloadExt, OptifineError};
+use crate::components::download::quiltmc::{QuiltMCDownloadExt, QuiltMCError};
 use crate::components::download::vanilla::{self, VanillaDownloadExt, VanillaError};
 use crate::components::download::{DownloadError, DownloadSource, Downloader, GameDownload};
 use crate::components::http::{HttpClient, HttpError};
@@ -36,7 +39,7 @@ use crate::components::progress::{NoopReporter, Reporter, ReportState};
 // use crate::components::version::VersionError;
 use crate::components::version::mods::{Mod, ModError};
 use crate::components::version::structs::{VersionInfo, VersionMeta};
-use crate::error;
+// use crate::error;  // 保留以备用
 use crate::state::{AppState, ProgressEvent, TaskCompleteEvent};
 
 // ============================================================================
@@ -486,8 +489,7 @@ pub async fn install_fabric(
     let loader = if let Some(ver) = loader_version {
         ver
     } else {
-        let loaders = downloader
-            .get_available_loaders(&vanilla_version)
+        let loaders = FabricDownloadExt::get_available_loaders(&downloader, &vanilla_version)
             .await
             .map_err(|e| format!("获取 Fabric 加载器列表失败: {}", e))?;
 
@@ -540,8 +542,7 @@ pub async fn install_forge(
     let forge_ver = if let Some(ver) = forge_version {
         ver
     } else {
-        let versions_data = downloader
-            .get_available_installers(&vanilla_version)
+        let versions_data = ForgeDownloadExt::get_available_installers(&downloader, &vanilla_version)
             .await
             .map_err(|e| format!("获取 Forge 版本列表失败: {}", e))?;
 
@@ -624,6 +625,443 @@ pub async fn install_game(
         .map_err(|e| format!("游戏安装失败: {}", e))?;
 
     Ok(format!("游戏 {} 安装完成", version_name))
+}
+
+// ============================================================================
+//  Tauri 命令 - NeoForge / OptiFine / QuiltMC 安装
+// ============================================================================
+
+/// 安装 NeoForge 加载器
+#[tauri::command]
+pub async fn install_neoforge(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    version_name: String,
+    vanilla_version: String,
+    neoforge_version: Option<String>,
+) -> Result<String, String> {
+    let minecraft_dir = get_minecraft_dir(&state).await;
+    let source = get_download_source(&state).await;
+    let task_id = format!("neoforge-{}", &version_name);
+
+    let reporter = create_progress_reporter(&app_handle, &task_id);
+    let downloader = build_downloader(&minecraft_dir, source, reporter);
+
+    let neoforge_ver = if let Some(ver) = neoforge_version {
+        ver
+    } else {
+        let versions_data = NeoForgeDownloadExt::get_available_installers(&downloader, &vanilla_version)
+            .await
+            .map_err(|e| format!("获取 NeoForge 版本列表失败: {}", e))?;
+
+        versions_data
+            .latest
+            .as_ref()
+            .map(|v| v.version.clone())
+            .ok_or_else(|| "没有可用的 NeoForge 版本".to_string())?
+    };
+
+    NeoForgeDownloadExt::install_neoforge_pre(&downloader, &version_name, &vanilla_version, &neoforge_ver)
+        .await
+        .map_err(|e| format!("下载 NeoForge 文件失败: {}", e))?;
+
+    NeoForgeDownloadExt::install_neoforge_post(&downloader, &version_name, &vanilla_version, &neoforge_ver)
+        .await
+        .map_err(|e| format!("执行 NeoForge 安装失败: {}", e))?;
+
+    Ok(format!("NeoForge {} 安装成功 (版本: {})", version_name, neoforge_ver))
+}
+
+/// 安装 OptiFine
+#[tauri::command]
+pub async fn install_optifine(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    version_name: String,
+    vanilla_version: String,
+    optifine_type: String,
+    optifine_patch: String,
+    as_mod: Option<bool>,
+) -> Result<String, String> {
+    let minecraft_dir = get_minecraft_dir(&state).await;
+    let source = get_download_source(&state).await;
+    let task_id = format!("optifine-{}", &version_name);
+
+    let reporter = create_progress_reporter(&app_handle, &task_id);
+    let downloader = build_downloader(&minecraft_dir, source, reporter);
+
+    OptifineDownloadExt::install_optifine(&downloader, &version_name, &vanilla_version, &optifine_type, &optifine_patch, as_mod.unwrap_or(false))
+        .await
+        .map_err(|e| format!("安装 OptiFine 失败: {}", e))?;
+
+    Ok(format!("OptiFine {} 安装成功", version_name))
+}
+
+/// 安装 QuiltMC 加载器
+#[tauri::command]
+pub async fn install_quiltmc(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    version_name: String,
+    vanilla_version: String,
+    loader_version: Option<String>,
+) -> Result<String, String> {
+    let minecraft_dir = get_minecraft_dir(&state).await;
+    let source = get_download_source(&state).await;
+    let task_id = format!("quiltmc-{}", &version_name);
+
+    let reporter = create_progress_reporter(&app_handle, &task_id);
+    let downloader = build_downloader(&minecraft_dir, source, reporter);
+
+    let loader = if let Some(ver) = loader_version {
+        ver
+    } else {
+        let loaders = QuiltMCDownloadExt::get_available_loaders(&downloader, &vanilla_version)
+            .await
+            .map_err(|e| format!("获取 QuiltMC 加载器列表失败: {}", e))?;
+
+        loaders
+            .first()
+            .map(|l| l.loader.version.clone())
+            .ok_or_else(|| "没有可用的 QuiltMC 加载器版本".to_string())?
+    };
+
+    QuiltMCDownloadExt::download_quiltmc_pre(&downloader, &version_name, &vanilla_version, &loader)
+        .await
+        .map_err(|e| format!("安装 QuiltMC 前置步骤失败: {}", e))?;
+
+    QuiltMCDownloadExt::download_quiltmc_post(&downloader, &version_name)
+        .await
+        .map_err(|e| format!("安装 QuiltMC 后置步骤失败: {}", e))?;
+
+    Ok(format!("QuiltMC {} 安装成功 (加载器: {})", version_name, loader))
+}
+
+// ============================================================================
+//  Tauri 命令 - 获取加载器版本列表
+// ============================================================================
+
+/// 获取 Fabric 可用加载器列表
+#[tauri::command]
+pub async fn get_fabric_loaders(
+    state: State<'_, AppState>,
+    vanilla_version: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    let minecraft_dir = get_minecraft_dir(&state).await;
+    let source = get_download_source(&state).await;
+    let downloader = build_downloader(&minecraft_dir, source, crate::components::progress::NR);
+
+    let loaders = FabricDownloadExt::get_available_loaders(&downloader, &vanilla_version)
+        .await
+        .map_err(|e| format!("获取 Fabric 加载器列表失败: {}", e))?;
+
+    let result: Vec<serde_json::Value> = loaders
+        .into_iter()
+        .map(|l| {
+            serde_json::json!({
+                "loader": l.loader.version,
+                "intermediary": l.intermediary.version,
+                "stable": l.loader.stable,
+            })
+        })
+        .collect();
+
+    Ok(result)
+}
+
+/// 获取 Forge 可用版本列表
+#[tauri::command]
+pub async fn get_forge_versions(
+    state: State<'_, AppState>,
+    vanilla_version: String,
+) -> Result<serde_json::Value, String> {
+    let minecraft_dir = get_minecraft_dir(&state).await;
+    let source = get_download_source(&state).await;
+    let downloader = build_downloader(&minecraft_dir, source, crate::components::progress::NR);
+
+    let versions = ForgeDownloadExt::get_available_installers(&downloader, &vanilla_version)
+        .await
+        .map_err(|e| format!("获取 Forge 版本列表失败: {}", e))?;
+
+    let all_versions: Vec<String> = versions.all_versions.iter().map(|v| v.version.clone()).collect();
+    let recommended = versions.recommended.as_ref().map(|v| v.version.clone());
+    let latest = versions.latest.as_ref().map(|v| v.version.clone());
+
+    Ok(serde_json::json!({
+        "all_versions": all_versions,
+        "recommended": recommended,
+        "latest": latest,
+    }))
+}
+
+/// 获取 NeoForge 可用版本列表
+#[tauri::command]
+pub async fn get_neoforge_versions(
+    state: State<'_, AppState>,
+    vanilla_version: String,
+) -> Result<serde_json::Value, String> {
+    let minecraft_dir = get_minecraft_dir(&state).await;
+    let source = get_download_source(&state).await;
+    let downloader = build_downloader(&minecraft_dir, source, crate::components::progress::NR);
+
+    let versions = NeoForgeDownloadExt::get_available_installers(&downloader, &vanilla_version)
+        .await
+        .map_err(|e| format!("获取 NeoForge 版本列表失败: {}", e))?;
+
+    let all_versions: Vec<String> = versions.all_versions.iter().map(|v| v.version.clone()).collect();
+    let latest = versions.latest.as_ref().map(|v| v.version.clone());
+
+    Ok(serde_json::json!({
+        "all_versions": all_versions,
+        "latest": latest,
+    }))
+}
+
+/// 获取 OptiFine 可用版本列表
+#[tauri::command]
+pub async fn get_optifine_versions(
+    state: State<'_, AppState>,
+    vanilla_version: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    let minecraft_dir = get_minecraft_dir(&state).await;
+    let source = get_download_source(&state).await;
+    let downloader = build_downloader(&minecraft_dir, source, crate::components::progress::NR);
+
+    let versions = OptifineDownloadExt::get_available_installers(&downloader, &vanilla_version)
+        .await
+        .map_err(|e| format!("获取 OptiFine 版本列表失败: {}", e))?;
+
+    let result: Vec<serde_json::Value> = versions
+        .into_iter()
+        .map(|v| {
+            serde_json::json!({
+                "mcversion": v.mcversion,
+                "type": v.version_type,
+                "patch": v.patch,
+                "filename": v.filename,
+            })
+        })
+        .collect();
+
+    Ok(result)
+}
+
+/// 获取 QuiltMC 可用加载器列表
+#[tauri::command]
+pub async fn get_quiltmc_loaders(
+    state: State<'_, AppState>,
+    vanilla_version: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    let minecraft_dir = get_minecraft_dir(&state).await;
+    let source = get_download_source(&state).await;
+    let downloader = build_downloader(&minecraft_dir, source, crate::components::progress::NR);
+
+    let loaders = QuiltMCDownloadExt::get_available_loaders(&downloader, &vanilla_version)
+        .await
+        .map_err(|e| format!("获取 QuiltMC 加载器列表失败: {}", e))?;
+
+    let result: Vec<serde_json::Value> = loaders
+        .into_iter()
+        .map(|l| {
+            serde_json::json!({
+                "loader": l.loader.version,
+                "intermediary": l.intermediary.version,
+            })
+        })
+        .collect();
+
+    Ok(result)
+}
+
+// ============================================================================
+//  Tauri 命令 - 模组市场搜索
+// ============================================================================
+
+/// 搜索 Modrinth 模组
+#[tauri::command]
+pub async fn search_modrinth(
+    query: String,
+    offset: Option<u64>,
+    limit: Option<u64>,
+) -> Result<Vec<serde_json::Value>, String> {
+    use crate::components::download::modrinth::{self, SearchParams};
+
+    let params = SearchParams {
+        search_filter: query,
+        offset: offset.unwrap_or(0),
+        limit: limit.unwrap_or(20).min(100),
+    };
+
+    let results = modrinth::search_mods(params)
+        .await
+        .map_err(|e| format!("搜索 Modrinth 失败: {}", e))?;
+
+    let json_results: Vec<serde_json::Value> = results
+        .into_iter()
+        .map(|m| {
+            serde_json::json!({
+                "project_id": m.project_id,
+                "slug": m.slug,
+                "icon_url": m.icon_url,
+                "title": m.title,
+                "description": m.description,
+            })
+        })
+        .collect();
+
+    Ok(json_results)
+}
+
+/// 获取 Modrinth 模组版本列表
+#[tauri::command]
+pub async fn get_modrinth_versions(
+    mod_id: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    use crate::components::download::modrinth;
+
+    let versions = modrinth::get_mod_files(&mod_id)
+        .await
+        .map_err(|e| format!("获取模组版本列表失败: {}", e))?;
+
+    let result: Vec<serde_json::Value> = versions
+        .into_iter()
+        .map(|v| {
+            let files: Vec<serde_json::Value> = v
+                .files
+                .into_iter()
+                .map(|f| {
+                    serde_json::json!({
+                        "url": f.url,
+                        "filename": f.filename,
+                        "primary": f.primary,
+                    })
+                })
+                .collect();
+            serde_json::json!({
+                "game_versions": v.game_versions,
+                "loaders": v.loaders,
+                "files": files,
+            })
+        })
+        .collect();
+
+    Ok(result)
+}
+
+/// 搜索 CurseForge 模组
+#[tauri::command]
+pub async fn search_curseforge(
+    query: String,
+    game_version: Option<String>,
+    offset: Option<u32>,
+    limit: Option<u32>,
+) -> Result<Vec<serde_json::Value>, String> {
+    use crate::components::download::curseforge::{self, SearchParams};
+
+    let params = SearchParams {
+        search_filter: query,
+        game_version: game_version.unwrap_or_default(),
+        index: offset.unwrap_or(0),
+        page_size: limit.unwrap_or(20).min(50),
+        ..Default::default()
+    };
+
+    let results = curseforge::search_mods(params)
+        .await
+        .map_err(|e| format!("搜索 CurseForge 失败: {}", e))?;
+
+    let json_results: Vec<serde_json::Value> = results
+        .into_iter()
+        .map(|m| {
+            serde_json::json!({
+                "id": m.id,
+                "name": m.name,
+                "slug": m.slug,
+                "summary": m.summary,
+                "icon_url": m.logo.as_ref().map(|l| l.thumbnail_url.as_str()),
+            })
+        })
+        .collect();
+
+    Ok(json_results)
+}
+
+// ============================================================================
+//  Tauri 命令 - 游戏启动（实际启动进程）
+// ============================================================================
+
+/// 启动游戏进程（实际启动 Minecraft）
+#[tauri::command]
+pub async fn start_game_process(
+    state: State<'_, AppState>,
+    auth_json: String,
+    version_name: String,
+    max_mem: Option<u32>,
+    custom_java_args: Option<Vec<String>>,
+    custom_game_args: Option<Vec<String>>,
+) -> Result<serde_json::Value, String> {
+    let minecraft_dir = get_minecraft_dir(&state).await;
+    let config = state.config.read().await;
+
+    let auth: AuthMethod = serde_json::from_str(&auth_json)
+        .map_err(|e| format!("解析认证信息失败: {}", e))?;
+
+    let java_path = if config.java_path.is_empty() {
+        let runtimes = search_java().await?;
+        runtimes
+            .first()
+            .ok_or_else(|| "未找到 Java 运行时".to_string())?
+            .path
+            .clone()
+    } else {
+        config.java_path.clone()
+    };
+
+    let java_path_buf = PathBuf::from(&java_path);
+    if !java_path_buf.exists() {
+        return Err(format!("Java 路径不存在: {}", java_path));
+    }
+
+    let versions_dir = minecraft_dir.join("versions");
+    let mut version_info = VersionInfo {
+        version: version_name.clone(),
+        version_base: versions_dir.to_string_lossy().to_string(),
+        ..Default::default()
+    };
+    version_info
+        .load()
+        .await
+        .map_err(|e| format!("加载版本信息失败: {}", e))?;
+
+    let client_config = ClientConfig {
+        auth,
+        version_info,
+        version_type: "release".to_string(),
+        custom_java_args: custom_java_args.unwrap_or_default(),
+        custom_args: custom_game_args.unwrap_or_default(),
+        java_runtime: JavaRuntime::from_java_path(&java_path_buf)
+            .await
+            .map_err(|e| format!("解析 Java 运行时失败: {}", e))?,
+        max_mem: max_mem.unwrap_or(config.max_memory_mb),
+        recheck: true,
+    };
+
+    let mut client = Client::new(client_config)
+        .await
+        .map_err(|e| format!("构建客户端失败: {}", e))?;
+
+    let pid = client
+        .launch()
+        .await
+        .map_err(|e| format!("启动游戏失败: {}", e))?;
+
+    // 暂时存储 Client 对象到状态中以便后续管理
+    // 简化处理：仅返回 PID
+    Ok(serde_json::json!({
+        "pid": pid,
+        "game_dir": client.game_dir.to_string_lossy(),
+        "java_path": client.java_path.to_string_lossy(),
+    }))
 }
 
 // ============================================================================

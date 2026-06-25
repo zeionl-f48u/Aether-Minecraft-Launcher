@@ -4,15 +4,16 @@
   功能：
   - 展示欢迎信息和应用简介
   - 显示三个版本卡片（最新版、推荐版、快照），每张卡片含启动按钮
-  - 底部展示支持的 Mod 加载器标签列表
+  - 接收并展示系统消息/通知中心
   - 使用错落动画（anim-stagger）实现卡片逐张入场
 
   使用的公共组件：
-  - AppSection: 区块标题
-  - AppCard:   版本信息卡片
-  - AppBadge:  版本号和加载器标签
-  - AppButton: 启动按钮
-  - AppIcon:   启动图标
+  - AppSection:   区块标题
+  - AppCard:      版本信息卡片
+  - AppBadge:     版本号标签
+  - AppButton:    启动按钮
+  - AppIcon:      图标
+  - MessageCenter:消息通知组件
   ============================================================ -->
 
 <script setup>
@@ -25,15 +26,10 @@ import AppBadge from "../components/common/AppBadge.vue";
 import AppButton from "../components/common/AppButton.vue";
 import AppIcon from "../components/common/AppIcon.vue";
 
+// ---------- 消息通知组件导入 ----------
+import MessageCenter from "../components/common/MessageCenter.vue";
+
 // ---------- 版本卡片数据 ----------
-/**
- * cards — 首页展示的三个版本卡片
- * 每项包含：
- *   title:   卡片标题
- *   version: 版本号（显示在徽章中）
- *   desc:    简短描述
- *   color:   徽章颜色（对应 AppBadge 的 color prop）
- */
 const cards = ref([
   {
     title: "最新版本",
@@ -54,18 +50,6 @@ const cards = ref([
     color: "purple",
   },
 ]);
-
-// ---------- Mod 加载器数据 ----------
-/**
- * loaders — 支持的 Mod 加载器列表
- * 用于底部标签展示
- */
-const loaders = [
-  { label: "Fabric", color: "blue" },
-  { label: "Forge", color: "orange" },
-  { label: "Quilt", color: "green" },
-  { label: "NeoForge", color: "indigo" },
-];
 </script>
 
 <template>
@@ -102,24 +86,10 @@ const loaders = [
       </div>
     </AppSection>
 
-    <!-- === Mod 加载器区块 ===
-         使用无 hover 效果的卡片，内部为标签列表 -->
-    <AppCard padding="p-5" :hover="false" class="anim-slide-up anim-stagger-4">
-      <template #header>
-        <h3 class="text-sm font-medium text-gray-300">支持的 Mod 加载器</h3>
-      </template>
-      <!-- 标签列表：flex wrap 自动换行 -->
-      <div class="flex flex-wrap gap-2">
-        <AppBadge
-          v-for="(badge, index) in loaders"
-          :key="index"
-          :color="badge.color"
-          variant="soft"
-          :class="`anim-fade-in anim-stagger-${index + 5}`"
-        >
-          {{ badge.label }}
-        </AppBadge>
-      </div>
-    </AppCard>
+    <!-- === 消息中心区块 ===
+         使用 MessageCenter 组件，接收后端通知和系统消息 -->
+    <AppSection title="消息中心" description="启动器消息与服务器通知">
+      <MessageCenter />
+    </AppSection>
   </div>
 </template>

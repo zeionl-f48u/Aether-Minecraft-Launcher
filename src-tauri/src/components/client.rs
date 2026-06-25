@@ -659,3 +659,49 @@ fn replace_variables(arg: &str, vars: &HashMap<String, String>) -> String {
     }
     result
 }
+
+// ============================================================================
+//  进程控制方法
+// ============================================================================
+
+impl Client {
+    /// 启动 Minecraft 游戏进程
+    ///
+    /// 调用 `Command::spawn()` 启动游戏，返回进程 PID。
+    pub async fn launch(&mut self) -> ClientResult<u32> {
+        let mut c = self
+            .cmd
+            .spawn()
+            .map_err(|e| ClientError::SpawnError(format!("启动游戏进程失败: {}", e)))?;
+
+        let pid = c.id().ok_or_else(|| ClientError::SpawnError("无法获取进程 ID".into()))?;
+
+        tracing::info!("游戏进程已启动，PID: {}", pid);
+        self.process = Some(c);
+
+        Ok(pid)
+    }
+
+    /// 停止 Minecraft 游戏进程
+    ///
+    /// 发送 SIGTERM（Unix）或 TerminateProcess（Windows），等待进程退出。
+    pub async fn stop(&mut self) -> ClientResult<()> {
+        if let Some(mut child) = self.process.take() {
+            child
+                .kill()
+                .await
+                .map_err(|e| ClientError::SpawnError(format!("无法终止进程: {}", e)))?;
+
+            tracing::info!("游戏进程已终止");
+        } else {
+            tracing::warn!("没有正在运行的进程");
+        }
+
+        Ok(())
+    }
+
+    /// 获取当前进程的 PID（如果有）
+    pub fn pid(&self) -> Option<u32> {
+        self.process.as_ref().and_then(|c| c.id())
+    }
+}

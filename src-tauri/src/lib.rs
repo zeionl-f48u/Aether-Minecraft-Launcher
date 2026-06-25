@@ -83,6 +83,22 @@ pub fn run() {
             commands::get_minecraft_dir_size,
             commands::get_logs,
             commands::cancel_operation,
+            // 额外加载器安装
+            commands::install_neoforge,
+            commands::install_optifine,
+            commands::install_quiltmc,
+            // 获取加载器版本列表
+            commands::get_fabric_loaders,
+            commands::get_forge_versions,
+            commands::get_neoforge_versions,
+            commands::get_optifine_versions,
+            commands::get_quiltmc_loaders,
+            // 模组市场
+            commands::search_modrinth,
+            commands::get_modrinth_versions,
+            commands::search_curseforge,
+            // 游戏启动进程
+            commands::start_game_process,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

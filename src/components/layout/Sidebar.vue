@@ -13,30 +13,30 @@
 // ---------- 组件导入 ----------
 import AppIcon from "../common/AppIcon.vue";
 
-// ---------- Props 定义 ----------
-defineProps({
+// ---------- Props & Emits 定义 ----------
+const props = defineProps({
   active: {
     type: String,
     default: "home",
   },
 });
 
+const emit = defineEmits(["navigate"]);
+
 // ---------- 菜单配置 ----------
-/**
- * 导航菜单项（不包含"设置"，设置单独放底部）
- */
 const menuItems = [
   { id: "home", label: "首页", icon: "home" },
   { id: "versions", label: "版本管理", icon: "versions" },
   { id: "download", label: "下载", icon: "download" },
 ];
+
+/** 导航点击处理 */
+function go(page) {
+  emit("navigate", page);
+}
 </script>
 
 <template>
-  <!--
-    侧边栏容器：
-    Win11 经典毛玻璃卡片风格
-  -->
   <aside
     class="fixed left-1 top-[48px] bottom-1 z-40 flex flex-col"
     :class="[
@@ -55,19 +55,15 @@ const menuItems = [
             ? 'text-[var(--text-accent)] bg-[var(--bg-hover)]'
             : 'text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]'
         "
+        @click="go(item.id)"
       >
-        <!-- Win11 风格激活指示条 -->
         <span
           v-if="active === item.id"
           class="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[23px] bg-[var(--text-accent)] rounded-r-full"
         />
-
-        <!-- 图标：居中对齐 -->
         <span class="relative z-10 flex items-center justify-center w-5 h-5 flex-shrink-0">
           <AppIcon :name="item.icon" size="4" />
         </span>
-
-        <!-- 文字：悬停展开显示 -->
         <span
           class="relative z-10 ml-3 text-sm font-medium leading-none opacity-0 group-hover:opacity-100 transition-all duration-200 delay-0 group-hover:delay-75 truncate"
         >
@@ -80,8 +76,18 @@ const menuItems = [
     <div class="flex flex-col py-2 border-t border-[var(--border-base)]">
       <!-- 用户入口 -->
       <div
-        class="relative flex items-center h-11 mx-1 px-4 rounded-xl cursor-pointer whitespace-nowrap transition-all duration-150 ease-out active:scale-95 text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
+        class="relative flex items-center h-11 mx-1 px-4 rounded-xl cursor-pointer whitespace-nowrap transition-all duration-150 ease-out active:scale-95"
+        :class="
+          active === 'user'
+            ? 'text-[var(--text-accent)] bg-[var(--bg-hover)]'
+            : 'text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]'
+        "
+        @click="go('user')"
       >
+        <span
+          v-if="active === 'user'"
+          class="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[23px] bg-[var(--text-accent)] rounded-r-full"
+        />
         <span class="flex items-center justify-center w-5 h-5 flex-shrink-0">
           <AppIcon name="user" size="4" />
         </span>
@@ -100,13 +106,12 @@ const menuItems = [
             ? 'text-[var(--text-accent)] bg-[var(--bg-hover)]'
             : 'text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]'
         "
+        @click="go('settings')"
       >
-        <!-- 激活指示条 -->
         <span
           v-if="active === 'settings'"
           class="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-[23px] bg-[var(--text-accent)] rounded-r-full"
         />
-
         <span class="flex items-center justify-center w-5 h-5 flex-shrink-0">
           <AppIcon name="settings" size="4" />
         </span>
