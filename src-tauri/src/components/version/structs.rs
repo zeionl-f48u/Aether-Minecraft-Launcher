@@ -216,10 +216,10 @@ pub struct LoggingConfig {
     pub file: LoggingFile,
 }
 
-/// SCL 独立版本设置
+/// ACL 独立版本设置
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Default)]
 #[serde(default)]
-pub struct SCLLaunchConfig {
+pub struct ACLLaunchConfig {
     pub max_mem: Option<usize>,
     pub java_path: String,
     pub game_independent: bool,
@@ -362,7 +362,7 @@ pub struct VersionInfo {
     pub version_base: String,
     pub version: String,
     pub meta: Option<VersionMeta>,
-    pub scl_launch_config: Option<SCLLaunchConfig>,
+    pub acl_launch_config: Option<ACLLaunchConfig>,
     pub version_type: VersionType,
     pub minecraft_version: MinecraftVersion,
     pub required_java: u8,
@@ -378,14 +378,14 @@ impl VersionInfo {
         self.version_dir().join(format!("{}.json", self.version))
     }
 
-    fn scl_config_path(&self) -> PathBuf {
-        self.version_dir().join(".scl.json")
+    fn acl_config_path(&self) -> PathBuf {
+        self.version_dir().join(".acl.json")
     }
 
     /// 游戏主目录（根据是否独立版本）
     pub fn version_path(&self) -> PathBuf {
         if self
-            .scl_launch_config
+            .acl_launch_config
             .as_ref()
             .map(|x| x.game_independent)
             .unwrap_or(false)
@@ -415,13 +415,13 @@ impl VersionInfo {
             )));
         }
 
-        // 加载 SCL 配置（可选）
-        let scl_path = self.scl_config_path();
-        if scl_path.is_file() {
-            let content = fs::read_to_string(&scl_path).await?;
-            let config: SCLLaunchConfig =
+        // 加载 ACL 配置（可选）
+        let acl_path = self.acl_config_path();
+        if acl_path.is_file() {
+            let content = fs::read_to_string(&acl_path).await?;
+            let config: ACLLaunchConfig =
                 serde_json::from_str(content.trim_start_matches('\u{feff}'))?;
-            self.scl_launch_config = Some(config);
+            self.acl_launch_config = Some(config);
         }
 
         // 加载版本元数据
@@ -459,7 +459,7 @@ impl VersionInfo {
         Ok(())
     }
 
-    /// 保存元数据和 SCL 配置到文件
+    /// 保存元数据和 ACL 配置到文件
     pub async fn save(&self) -> VersionResult<()> {
         let version_dir = self.version_dir();
         if !version_dir.is_dir() {
@@ -475,15 +475,15 @@ impl VersionInfo {
             file.sync_all().await?;
         }
 
-        // 保存或删除 SCL 配置
-        let scl_path = self.scl_config_path();
-        if let Some(config) = &self.scl_launch_config {
+        // 保存或删除 ACL 配置
+        let acl_path = self.acl_config_path();
+        if let Some(config) = &self.acl_launch_config {
             let json = serde_json::to_vec_pretty(config)?;
-            let mut file = fs::File::create(&scl_path).await?;
+            let mut file = fs::File::create(&acl_path).await?;
             file.write_all(&json).await?;
             file.sync_all().await?;
-        } else if scl_path.is_file() {
-            fs::remove_file(&scl_path).await?;
+        } else if acl_path.is_file() {
+            fs::remove_file(&acl_path).await?;
         }
 
         Ok(())
@@ -735,13 +735,13 @@ mod tests {
         let json = serde_json::to_string_pretty(&meta).unwrap();
         std::fs::write(version_dir.join("1.16.5.json"), json).unwrap();
 
-        // 创建模拟的 SCL 配置
-        let scl_config = SCLLaunchConfig {
+        // 创建模拟的 ACL 配置
+        let acl_config = ACLLaunchConfig {
             game_independent: true,
             ..Default::default()
         };
-        let json = serde_json::to_string_pretty(&scl_config).unwrap();
-        std::fs::write(version_dir.join(".scl.json"), json).unwrap();
+        let json = serde_json::to_string_pretty(&acl_config).unwrap();
+        std::fs::write(version_dir.join(".acl.json"), json).unwrap();
 
         let mut info = VersionInfo {
             version_base: base,
@@ -751,11 +751,11 @@ mod tests {
 
         info.load().await.unwrap();
         assert!(info.meta.is_some());
-        assert!(info.scl_launch_config.is_some());
+        assert!(info.acl_launch_config.is_some());
         assert_eq!(info.version_type, VersionType::Vanilla);
 
         // 测试保存（修改配置）
-        if let Some(config) = &mut info.scl_launch_config {
+        if let Some(config) = &mut info.acl_launch_config {
             config.game_independent = false;
         }
         info.save().await.unwrap();
@@ -764,7 +764,7 @@ mod tests {
         let mut info2 = info.clone();
         info2.load().await.unwrap();
         assert_eq!(
-            info2.scl_launch_config.unwrap().game_independent,
+            info2.acl_launch_config.unwrap().game_independent,
             false
         );
     }

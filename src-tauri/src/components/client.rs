@@ -125,8 +125,8 @@ fn get_game_directory(cfg: &ClientConfig) -> ClientResult<PathBuf> {
         .ok_or_else(|| ClientError::PathError("版本基础目录无父目录".into()))?;
     let game_dir = PathBuf::from(get_full_path(game_dir).map_err(|e| ClientError::PathError(e.to_string()))?);
 
-    if let Some(scl) = &cfg.version_info.scl_launch_config {
-        if scl.game_independent {
+    if let Some(acl) = &cfg.version_info.acl_launch_config {
+        if acl.game_independent {
             Ok(version_dir)
         } else {
             Ok(game_dir)
@@ -430,9 +430,9 @@ impl Client {
         cfg.version_info.meta = Some(meta.clone());
 
         // 2. 确定 Java 运行时
-        let java_runtime = if let Some(scl_config) = &cfg.version_info.scl_launch_config {
-            if !scl_config.java_path.is_empty() {
-                JavaRuntime::from_java_path(Path::new(&scl_config.java_path)).await
+        let java_runtime = if let Some(acl_config) = &cfg.version_info.acl_launch_config {
+            if !acl_config.java_path.is_empty() {
+                JavaRuntime::from_java_path(Path::new(&acl_config.java_path)).await
                     .map_err(|e| ClientError::JavaRuntimeError(e.to_string()))?
             } else {
                 cfg.java_runtime.clone()
@@ -494,7 +494,7 @@ impl Client {
         // 8. 构建 Command
         let wrapper_path = cfg
             .version_info
-            .scl_launch_config
+            .acl_launch_config
             .as_ref()
             .map(|x| x.wrapper_path.clone())
             .unwrap_or_default();
@@ -505,7 +505,7 @@ impl Client {
             let mut cmd = Command::new(&wrapper_path);
             if let Some(wrapper_args) = cfg
                 .version_info
-                .scl_launch_config
+                .acl_launch_config
                 .as_ref()
                 .map(|x| x.wrapper_args.clone())
                 .filter(|s| !s.is_empty())
@@ -554,12 +554,12 @@ fn build_args(cfg: &ClientConfig, meta: &VersionMeta, vars: &HashMap<String, Str
     for arg in &cfg.custom_java_args {
         args.push(arg.clone());
     }
-    if let Some(scl_config) = &cfg.version_info.scl_launch_config {
-        if !scl_config.jvm_args.trim().is_empty() {
-            if let Ok(parsed) = shell_words::split(&scl_config.jvm_args) {
+    if let Some(acl_config) = &cfg.version_info.acl_launch_config {
+        if !acl_config.jvm_args.trim().is_empty() {
+            if let Ok(parsed) = shell_words::split(&acl_config.jvm_args) {
                 args.extend(parsed);
             } else {
-                args.push(scl_config.jvm_args.clone());
+                args.push(acl_config.jvm_args.clone());
             }
         }
     }
@@ -637,12 +637,12 @@ fn build_args(cfg: &ClientConfig, meta: &VersionMeta, vars: &HashMap<String, Str
     for arg in &cfg.custom_args {
         args.push(arg.clone());
     }
-    if let Some(scl_config) = &cfg.version_info.scl_launch_config {
-        if !scl_config.game_args.trim().is_empty() {
-            if let Ok(parsed) = shell_words::split(&scl_config.game_args) {
+    if let Some(acl_config) = &cfg.version_info.acl_launch_config {
+        if !acl_config.game_args.trim().is_empty() {
+            if let Ok(parsed) = shell_words::split(&acl_config.game_args) {
                 args.extend(parsed);
             } else {
-                args.push(scl_config.game_args.clone());
+                args.push(acl_config.game_args.clone());
             }
         }
     }
