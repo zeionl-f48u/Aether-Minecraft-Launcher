@@ -88,11 +88,11 @@ const loaders = [
         >
           <!-- 卡片头部：标题 + 版本号徽章 -->
           <template #header>
-            <h3 class="text-sm font-medium text-gray-300">{{ card.title }}</h3>
+            <h3 class="text-sm font-medium text-[var(--text-secondary)]">{{ card.title }}</h3>
             <AppBadge :color="card.color">{{ card.version }}</AppBadge>
           </template>
           <!-- 卡片描述 -->
-          <p class="text-sm text-gray-500">{{ card.desc }}</p>
+          <p class="text-sm text-[var(--text-tertiary)]">{{ card.desc }}</p>
           <!-- 启动按钮（全宽） -->
           <AppButton variant="primary" size="sm" fullWidth class="mt-4">
             <AppIcon name="launch" size="3.5" />

@@ -13,10 +13,16 @@
 
 <script setup>
 // ---------- 组件导入 ----------
-// AppLayout：整体布局框架（标题栏 + 侧边栏 + 内容区）
+import { onMounted } from "vue";
 import AppLayout from "./components/layout/AppLayout.vue";
-// Home：首页内容
 import Home from "./views/Home.vue";
+
+// ---------- 主题初始化 ----------
+import { initTheme } from "./composables/useTheme.js";
+
+onMounted(() => {
+  initTheme();
+});
 </script>
 
 <template>

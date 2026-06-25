@@ -59,13 +59,13 @@ defineProps({
  */
 const variantClasses = {
   primary:
-    "bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-sm shadow-blue-600/20",
+    "bg-[var(--button-primary)] hover:bg-[var(--button-primary-hover)] active:brightness-90 text-white shadow-sm",
   secondary:
-    "bg-gray-700 hover:bg-gray-600 active:bg-gray-500 text-gray-200 border border-gray-600",
+    "bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] active:bg-[var(--bg-active)] text-[var(--text-secondary)] border border-[var(--border-base)]",
   ghost:
-    "bg-transparent hover:bg-gray-700/60 active:bg-gray-700 text-gray-400 hover:text-gray-200 active:text-white",
+    "bg-transparent hover:bg-[var(--bg-hover)] active:bg-[var(--bg-active)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]",
   danger:
-    "bg-red-600 hover:bg-red-700 active:bg-red-800 text-white shadow-sm shadow-red-600/20",
+    "bg-red-600 hover:bg-red-700 active:bg-red-800 text-white shadow-sm",
 };
 
 /**

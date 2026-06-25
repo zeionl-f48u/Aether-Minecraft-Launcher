@@ -30,14 +30,18 @@ import { onMounted } from "vue";
 // ---------- Flowbite 初始化 ----------
 import { initFlowbite } from "flowbite";
 
+// ---------- 主题管理 ----------
+import { useTheme } from "../../composables/useTheme.js";
+
 // ---------- 布局子组件 ----------
 import TitleBar from "./TitleBar.vue";  // 顶部标题栏（固定定位）
 import Sidebar from "./Sidebar.vue";    // 左侧导航栏（固定定位）
 
+// ---------- 主题初始化 ----------
+const { toggleTheme } = useTheme();
+
 /**
  * onMounted — 组件挂载后初始化 Flowbite
- * Flowbite 需要手动调用 initFlowbite() 来激活
- * 其 JavaScript 交互组件（如 dropdown、modal 等）。
  */
 onMounted(() => {
   initFlowbite();
@@ -47,15 +51,21 @@ onMounted(() => {
 <template>
   <!--
     最外层容器：
-      - flex 布局，子元素横向排列
-      - h-screen w-screen：占满整个视口
-      - overflow-hidden：防止整体滚动
-      - 深色渐变背景（bg-gradient-to-br from-[#12121a] to-[#0d0d14]）
+      - 使用 CSS 变量实现 Win11 经典渐变背景
+      - 深色/浅色自动适配
   -->
-  <div class="flex h-screen w-screen overflow-hidden bg-gradient-to-br from-[#12121a] to-[#0d0d14] text-white">
-
+  <div
+    class="flex h-screen w-screen overflow-hidden transition-colors duration-300"
+    :style="{
+      background: `linear-gradient(135deg, var(--gradient-start), var(--gradient-end))`,
+      color: 'var(--text-primary)',
+    }"
+  >
     <!-- TitleBar：fixed 固定顶部，不占文档流 -->
-    <TitleBar title="Aether Launcher" />
+    <TitleBar
+      title="Aether Launcher"
+      @toggle-theme="toggleTheme"
+    />
 
     <!-- Sidebar：fixed 固定左侧，在标题栏下方 -->
     <Sidebar active="home" />
@@ -67,7 +77,6 @@ onMounted(() => {
         - mt-[44px]：为顶部固定标题栏留出空间
         - overflow-auto：内容超出时可滚动
         - p-6：内边距
-        - <slot />：接收父组件传入的页面内容
     -->
     <main class="flex-1 ml-[60px] mt-[44px] overflow-auto p-6">
       <slot />
@@ -75,7 +84,3 @@ onMounted(() => {
 
   </div>
 </template>
-
-<style scoped>
-/* 页面过渡动画预留 —— 启用 vue-router 后可在此添加 Transition 样式 */
-</style>

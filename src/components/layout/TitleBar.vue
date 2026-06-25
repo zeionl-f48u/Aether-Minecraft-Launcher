@@ -20,17 +20,16 @@
 import AppIcon from "../common/AppIcon.vue";                      // 通用图标
 import { useWindowControls } from "../../composables/useWindowControls.js"; // 窗口控制
 
-// ---------- Props 定义 ----------
-/**
- * title — 标题栏显示的应用名称
- * 通过 props 传入以支持不同页面自定义标题
- */
+// ---------- Props & Emits 定义 ----------
 defineProps({
   title: {
     type: String,
     default: "Aether Minecraft Launcher",
   },
 });
+
+/** 向父组件发送切换主题事件 */
+defineEmits(["toggle-theme"]);
 
 // ---------- 窗口控制方法 ----------
 // 从 composable 解构出三个窗口操作方法
@@ -39,52 +38,63 @@ const { minimize, toggleMaximize, close } = useWindowControls();
 
 <template>
   <!--
-    外层容器：fixed 固定定位，悬浮于内容之上
+    外层容器：Win11 经典毛玻璃标题栏
     样式说明：
-      - bg-white/[0.06] + backdrop-blur-md：极淡毛玻璃效果
-      - rounded-2xl：大圆角
-      - border-white/10：半透明白色描边
-      - active:scale-90：按钮点击缩放反馈
+      - 使用 CSS 变量实现深色/浅色自适应
+      - 毛玻璃效果（backdrop-blur-md）
+      - 大圆角（rounded-2xl）
+      - 窗口控制按钮居中对齐
   -->
   <div
-    class="fixed top-0 left-1 right-1 z-50 flex items-center justify-between h-[38px] mt-1 bg-white/[0.06] backdrop-blur-md rounded-2xl select-none shadow-lg shadow-black/10 border border-white/10"
+    class="fixed top-0 left-1 right-1 z-50 flex items-center justify-between h-[38px] mt-1 backdrop-blur-md rounded-2xl select-none"
+    :class="[
+      'bg-[var(--glass-bg)] border border-[var(--glass-border)] shadow-lg shadow-[var(--glass-shadow)]',
+      'transition-colors duration-300'
+    ]"
   >
-    <!-- ---- 左侧：窗口拖拽区域 ----
-         data-tauri-drag-region 是 Tauri 2 提供的 HTML 属性，
-         标记该区域可被鼠标拖拽移动窗口。
-         配合 tauri.conf.json 中 decorations: false 使用。
-         flex-1 使其撑满剩余空间。 -->
+    <!-- ---- 左侧：窗口拖拽区域 ---- -->
     <div
       class="flex items-center h-full px-4 flex-1"
       data-tauri-drag-region
     >
-      <span class="text-sm font-semibold text-white/90">{{ title }}</span>
+      <span class="text-sm font-semibold text-[var(--text-primary)]">{{ title }}</span>
     </div>
 
-    <!-- ---- 右侧：窗口控制按钮 ----
-         三个按钮分别绑定 minimize / toggleMaximize / close 方法。
-         样式统一：38×28px 圆角按钮，hover 亮色背景，
-         关闭按钮 hover 使用红色背景以符合惯例。 -->
-    <div class="flex items-center h-full pr-1">
+    <!-- ---- 右侧：主题切换 + 窗口控制按钮 ---- -->
+    <div class="flex items-center h-full pr-1 gap-0.5">
+      <!-- 主题切换按钮 -->
+      <button
+        class="flex items-center justify-center w-7 h-7 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-all duration-150 rounded-full active:scale-90"
+        @click="$emit('toggle-theme')"
+        title="切换主题"
+      >
+        <AppIcon name="theme" size="3.5" stroke-width="1.5" />
+      </button>
+
+      <!-- 分隔线 -->
+      <span class="w-px h-4 mx-0.5 bg-[var(--border-base)]" />
+
       <!-- 最小化 -->
       <button
-        class="flex items-center justify-center w-7 h-7 mx-0.5 text-gray-500 hover:text-white hover:bg-white/10 transition-all duration-150 rounded-full active:scale-90"
+        class="flex items-center justify-center w-7 h-7 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-all duration-150 rounded-full active:scale-90"
         @click="minimize"
         title="最小化"
       >
         <AppIcon name="min" size="3.5" stroke-width="1.5" />
       </button>
+
       <!-- 最大化/还原 -->
       <button
-        class="flex items-center justify-center w-7 h-7 mx-0.5 text-gray-500 hover:text-white hover:bg-white/10 transition-all duration-150 rounded-full active:scale-90"
+        class="flex items-center justify-center w-7 h-7 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-all duration-150 rounded-full active:scale-90"
         @click="toggleMaximize"
         title="最大化"
       >
         <AppIcon name="max" size="3.5" stroke-width="1.5" />
       </button>
+
       <!-- 关闭 -->
       <button
-        class="flex items-center justify-center w-7 h-7 mx-0.5 text-gray-500 hover:text-white hover:bg-red-500/60 transition-all duration-150 rounded-full active:scale-90"
+        class="flex items-center justify-center w-7 h-7 text-[var(--text-tertiary)] hover:text-white hover:bg-red-500/70 transition-all duration-150 rounded-full active:scale-90"
         @click="close"
         title="关闭"
       >

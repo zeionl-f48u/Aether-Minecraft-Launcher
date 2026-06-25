@@ -45,9 +45,10 @@ defineProps({
   -->
   <div
     :class="[
-      'bg-gray-800 border border-gray-700 rounded-lg anim-scale-in',
+      'rounded-lg anim-scale-in transition-colors duration-200',
+      'bg-[var(--card-bg)] border border-[var(--card-border)]',
       hover
-        ? 'hover:border-gray-500 hover:shadow-lg hover:shadow-black/20 transition-all duration-200 ease-out'
+        ? 'hover:border-[var(--border-hover)] hover:shadow-lg hover:shadow-[var(--glass-shadow)] transition-all duration-200 ease-out'
         : '',
       padding,
     ]"

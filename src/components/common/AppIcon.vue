@@ -95,5 +95,10 @@ defineProps({
       <rect x="2" y="2" width="8" height="8" rx="0.5" fill="none" />
     </svg>
 
+    <!-- ===== 主题切换（日月）===== -->
+    <svg v-else-if="name === 'theme'" :class="`w-${size} h-${size}`" viewBox="0 0 24 24" fill="none" stroke="currentColor" :stroke-width="strokeWidth" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+    </svg>
+
   </span>
 </template>

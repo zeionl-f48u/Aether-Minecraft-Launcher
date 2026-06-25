@@ -3,9 +3,10 @@
    ============================================================
    本文件作为应用的全局样式入口，主要负责：
    1. 引入 Tailwind CSS v4 和 Flowbite 样式库
-   2. 定义全局 CSS 关键帧动画
-   3. 提供可复用的动画工具类（供组件通过 class 直接调用）
-   4. 高 DPI 渲染优化
+   2. 定义 Windows 11 经典配色 CSS 变量（深色/浅色）
+   3. 定义全局 CSS 关键帧动画
+   4. 提供可复用的动画工具类
+   5. 高 DPI 渲染优化
    ============================================================ */
 
 /* --- 样式库导入 --- */
@@ -14,17 +15,118 @@
 
 
 /* ==================================================================
-   高 DPI / Retina 渲染优化
+   Windows 11 经典配色 — CSS 自定义属性
    ==================================================================
-   确保所有元素在各缩放级别下保持锐利和清晰。
+   通过 [data-theme="dark"] 和 [data-theme="light"] 切换。
+   Win11 设计语言特征：
+   - 圆角矩形（半径 8px 为主）
+   - 毛玻璃（Acrylic / Mica）效果
+   - 柔和阴影（无硬边缘）
+   - 蓝色主题色 #60a5fa（Win11 默认蓝）
    ================================================================== */
 
-/* 所有 SVG 和图片使用矢量平滑缩放 */
+/* --- 深色模式（默认）--- */
+[data-theme="dark"] {
+  /* 背景层级 */
+  --bg-base: #1a1a2e;            /* 最底层背景 */
+  --bg-surface: #16213e;         /* 卡片/面板表面 */
+  --bg-elevated: #1e293b;        /* 浮起表面 */
+  --bg-hover: rgba(255,255,255,0.08);  /* 悬停高亮 */
+  --bg-active: rgba(255,255,255,0.12); /* 激活高亮 */
+
+  /* 前景文字 */
+  --text-primary: #f1f5f9;       /* 主文字（白灰） */
+  --text-secondary: #94a3b8;     /* 次要文字 */
+  --text-tertiary: #64748b;      /* 辅助文字 */
+  --text-accent: #60a5fa;        /* 主题色文字 */
+
+  /* 边框 */
+  --border-base: rgba(255,255,255,0.10);
+  --border-hover: rgba(255,255,255,0.20);
+  --border-accent: #60a5fa;
+
+  /* 毛玻璃 */
+  --glass-bg: rgba(30, 41, 59, 0.6);
+  --glass-border: rgba(255,255,255,0.08);
+  --glass-shadow: rgba(0, 0, 0, 0.3);
+
+  /* 卡片/按钮 */
+  --card-bg: rgba(30, 41, 59, 0.8);
+  --card-border: rgba(255,255,255,0.08);
+  --button-primary: #3b82f6;
+  --button-primary-hover: #2563eb;
+
+  /* 滚动条 */
+  --scrollbar-thumb: #475569;
+  --scrollbar-thumb-hover: #64748b;
+
+  /* 渐变背景 */
+  --gradient-start: #0f0f1a;
+  --gradient-end: #1a1a2e;
+}
+
+/* --- 浅色模式（Win11 浅色经典）--- */
+[data-theme="light"] {
+  --bg-base: #f0f0f0;
+  --bg-surface: #ffffff;
+  --bg-elevated: #f8fafc;
+  --bg-hover: rgba(0,0,0,0.06);
+  --bg-active: rgba(0,0,0,0.10);
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-tertiary: #94a3b8;
+  --text-accent: #3b82f6;
+
+  --border-base: rgba(0,0,0,0.10);
+  --border-hover: rgba(0,0,0,0.20);
+  --border-accent: #3b82f6;
+
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(0,0,0,0.08);
+  --glass-shadow: rgba(0, 0, 0, 0.1);
+
+  --card-bg: rgba(255, 255, 255, 0.9);
+  --card-border: rgba(0,0,0,0.08);
+  --button-primary: #3b82f6;
+  --button-primary-hover: #2563eb;
+
+  --scrollbar-thumb: #cbd5e1;
+  --scrollbar-thumb-hover: #94a3b8;
+
+  --gradient-start: #e8e8ec;
+  --gradient-end: #f0f0f0;
+}
+
+/* 应用基础背景色 */
+html, body, #app {
+  background: var(--bg-base);
+  color: var(--text-primary);
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+
+/* ==================================================================
+   Windows 11 经典滚动条
+   ================================================================== */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+
+/* ==================================================================
+   高 DPI / Retina 渲染优化
+   ================================================================== */
 svg, img {
   shape-rendering: geometricPrecision;
 }
 
-/* 确保文字和 UI 在 Retina 屏幕上的清晰渲染 */
 * {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -35,43 +137,32 @@ svg, img {
 
 /* ==================================================================
    全局动画关键帧定义
-   ==================================================================
-   所有动画遵循以下命名约定：
-   - 动画名称使用连字符小写（如 fade-in）
-   - 对应的工具类使用 anim- 前缀（如 anim-fade-in）
    ================================================================== */
-
-/* --- fade-in：纯淡入，无位移 --- */
 @keyframes fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
 
-/* --- slide-up：从下方 16px 淡入滑入 --- */
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* --- slide-down：从上方 12px 淡入滑入 --- */
 @keyframes slide-down {
   from { opacity: 0; transform: translateY(-12px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* --- scale-in：从 0.92 缩放淡入 --- */
 @keyframes scale-in {
   from { opacity: 0; transform: scale(0.92); }
   to   { opacity: 1; transform: scale(1); }
 }
 
-/* --- slide-in-left：从左侧 16px 淡入滑入 --- */
 @keyframes slide-in-left {
   from { opacity: 0; transform: translateX(-16px); }
   to   { opacity: 1; transform: translateX(0); }
 }
 
-/* --- pulse-glow：脉冲发光效果（可用于激活状态指示）--- */
 @keyframes pulse-glow {
   0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.3); }
   50%      { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0); }
@@ -80,33 +171,15 @@ svg, img {
 
 /* ==================================================================
    动画工具类
-   ==================================================================
-   特点：
-   - 使用 animation-fill-mode: both，确保元素在动画前保持起始状态
-   - 可直接在组件 template 中通过 class 使用，无需重复定义
-   示例：<div class="anim-slide-up">内容</div>
    ================================================================== */
-
 .anim-fade-in     { animation: fade-in 0.35s ease-out both; }
 .anim-slide-up    { animation: slide-up 0.4s ease-out both; }
 .anim-slide-down  { animation: slide-down 0.3s ease-out both; }
 .anim-scale-in    { animation: scale-in 0.3s ease-out both; }
 .anim-slide-left  { animation: slide-in-left 0.35s ease-out both; }
 
-
-/* --- 逐项延迟工具（用于列表/网格的错落入场）---
-   配合上述动画类使用，例如：
-   <div class="anim-slide-up anim-stagger-2">第2项</div>
-   每个等级递增 50ms，最多支持 5 项错落。
-   ================================================================ */
 .anim-stagger-1 { animation-delay: 0.05s; }
 .anim-stagger-2 { animation-delay: 0.10s; }
 .anim-stagger-3 { animation-delay: 0.15s; }
 .anim-stagger-4 { animation-delay: 0.20s; }
 .anim-stagger-5 { animation-delay: 0.25s; }
-
-/* Scrollbar styling */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #6b7280; }

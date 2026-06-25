@@ -49,11 +49,11 @@ const versions = ref([
 
     <!-- === 版本列表表格 ===
          深色卡片容器包裹，overflow-x-auto 支持横向滚动 -->
-    <div class="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden anim-slide-up">
+    <div class="bg-[var(--card-bg)] border border-[var(--card-border)] rounded-lg overflow-hidden anim-slide-up">
       <div class="overflow-x-auto">
         <table class="w-full text-sm text-left">
-          <!-- 表头：灰色背景大写 -->
-          <thead class="text-xs text-gray-400 uppercase bg-gray-900/50">
+          <!-- 表头 -->
+          <thead class="text-xs text-[var(--text-tertiary)] uppercase bg-[var(--bg-hover)]">
             <tr>
               <th class="px-4 py-3">版本</th>
               <th class="px-4 py-3">类型</th>
@@ -67,11 +67,11 @@ const versions = ref([
             <tr
               v-for="(v, index) in versions"
               :key="index"
-              class="border-b border-gray-700 hover:bg-gray-700/40 transition-colors duration-150 anim-slide-left"
+              class="border-b border-[var(--border-base)] hover:bg-[var(--bg-hover)] transition-colors duration-150 anim-slide-left"
               :class="`anim-stagger-${index + 1}`"
             >
               <!-- 版本号 -->
-              <td class="px-4 py-3 font-medium text-white">{{ v.id }}</td>
+              <td class="px-4 py-3 font-medium text-[var(--text-primary)]">{{ v.id }}</td>
               <!-- 类型徽章：正式版绿色，快照黄色 -->
               <td class="px-4 py-3">
                 <AppBadge :color="v.type === 'release' ? 'green' : 'yellow'" size="sm">
@@ -79,9 +79,9 @@ const versions = ref([
                 </AppBadge>
               </td>
               <!-- 发布日期 -->
-              <td class="px-4 py-3 text-gray-400">{{ v.date }}</td>
+              <td class="px-4 py-3 text-[var(--text-secondary)]">{{ v.date }}</td>
               <!-- Mod 加载器 -->
-              <td class="px-4 py-3 text-gray-400">{{ v.loader }}</td>
+              <td class="px-4 py-3 text-[var(--text-secondary)]">{{ v.loader }}</td>
               <!-- 启动按钮 -->
               <td class="px-4 py-3">
                 <AppButton variant="primary" size="sm">
