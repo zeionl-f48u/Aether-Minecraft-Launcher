@@ -83,7 +83,7 @@ fn get_native_arch() -> String {
     unsafe {
         let mut info = SYSTEM_INFO::default();
         GetNativeSystemInfo(&mut info);
-        match info.Anonymous.Anonymous.wProcessorArchitecture {
+        match info.Anonymous.Anonymous.wProcessorArchitecture.0 {
             0 => "x86".to_string(),      // PROCESSOR_ARCHITECTURE_INTEL
             9 => "x86_64".to_string(),   // PROCESSOR_ARCHITECTURE_AMD64
             12 => "arm".to_string(),     // PROCESSOR_ARCHITECTURE_ARM
@@ -317,13 +317,13 @@ pub struct MemoryStatus {
 pub fn get_mem_status() -> UtilsResult<MemoryStatus> {
     #[cfg(target_os = "windows")]
     {
-        use windows::Win32::System::Performance::{
+        use windows::Win32::System::SystemInformation::{
             GlobalMemoryStatusEx, MEMORYSTATUSEX,
         };
         unsafe {
             let mut status = MEMORYSTATUSEX::default();
             status.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
-            if GlobalMemoryStatusEx(&mut status).as_bool() {
+            if GlobalMemoryStatusEx(&mut status).is_ok() {
                 Ok(MemoryStatus {
                     total: (status.ullTotalPhys / (1024 * 1024)) as u64,
                     free: (status.ullAvailPhys / (1024 * 1024)) as u64,

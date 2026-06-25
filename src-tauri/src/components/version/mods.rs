@@ -175,18 +175,18 @@ impl Mod {
     /// 启用模组（如果已禁用）
     pub async fn enable(&mut self) -> ModResult<()> {
         if self.file_name.ends_with(".disabled") && !self.enabled {
+            let old_path = self.path.clone();
             let mut new_path = self.path.clone();
             let base = self.file_name.trim_end_matches(".disabled");
             new_path.set_file_name(base);
+            let new_path_clone = new_path.clone();
             spawn_blocking(move || {
-                std::fs::rename(&self.path, &new_path)?;
+                std::fs::rename(&old_path, &new_path_clone)?;
                 Ok::<_, std::io::Error>(())
             }).await??;
             self.path = new_path;
             self.file_name = base.to_owned();
             self.enabled = true;
-            // 清除缓存（因为文件内容没变，但路径变了，但元数据不变，可保留）
-            // 为了安全，不清除，因为元数据不依赖路径
         }
         Ok(())
     }
@@ -194,11 +194,13 @@ impl Mod {
     /// 禁用模组（如果已启用）
     pub async fn disable(&mut self) -> ModResult<()> {
         if !self.file_name.ends_with(".disabled") && self.enabled {
+            let old_path = self.path.clone();
             let mut new_path = self.path.clone();
             let new_name = format!("{}.disabled", self.file_name);
             new_path.set_file_name(&new_name);
+            let new_path_clone = new_path.clone();
             spawn_blocking(move || {
-                std::fs::rename(&self.path, &new_path)?;
+                std::fs::rename(&old_path, &new_path_clone)?;
                 Ok::<_, std::io::Error>(())
             }).await??;
             self.path = new_path;
@@ -212,7 +214,7 @@ impl Mod {
     pub async fn remove(self) -> ModResult<()> {
         spawn_blocking(move || {
             std::fs::remove_file(&self.path)?;
-            Ok(())
+            Ok::<_, std::io::Error>(())
         }).await??;
         Ok(())
     }
@@ -277,6 +279,17 @@ impl ModMeta {
             ModMeta::Fabric(m) => &m.version,
             ModMeta::Forge(m) => &m.version,
         }
+    }
+
+    pub fn description(&self) -> &str {
+        match self {
+            ModMeta::Fabric(m) => &m.description,
+            ModMeta::Forge(m) => &m.description,
+        }
+    }
+
+    pub fn authors(&self) -> Vec<String> {
+        Vec::new()
     }
 }
 

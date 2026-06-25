@@ -156,7 +156,7 @@ impl Default for HttpClientConfig {
     fn default() -> Self {
         Self {
             user_agent: format!(
-                "scl-core/{} (Minecraft Launcher)",
+                "aether-minecraft-launcher/{}",
                 std::env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "dev".into())
             ),
             connect_timeout: Duration::from_secs(10),
@@ -440,6 +440,25 @@ impl HttpClient {
             }
         }
         Ok(resp.text().await?)
+    }
+
+    pub async fn post_json<T: serde::Serialize, R: serde::de::DeserializeOwned>(
+        &self,
+        url: &str,
+        body: &T,
+    ) -> HttpResult<R> {
+        let resp = self
+            .inner
+            .post(url)
+            .json(body)
+            .send()
+            .await?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(HttpError::Status(status));
+        }
+        let bytes = resp.bytes().await?;
+        Ok(serde_json::from_slice(&bytes)?)
     }
 
     pub fn inner(&self) -> &Client {

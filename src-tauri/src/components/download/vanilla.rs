@@ -18,10 +18,10 @@ use super::{
     DownloadSource, Downloader,
 };
 use crate::{
-    download::VersionInfo,
+    components::version::structs::VersionInfo,
     prelude::*,
-    progress::Reporter,
-    version::structs::{Allowed, Library, VersionMeta},
+    components::progress::{Reporter, ReporterExt},
+    components::version::structs::{Allowed, Library, VersionMeta},
 };
 
 // ============================================================================
@@ -188,7 +188,8 @@ pub async fn verify_file_sha1(path: &Path, expected_sha1: &str) -> VanillaResult
         return Ok(false);
     }
     let mut file = fs::File::open(path).await?;
-    let actual_sha1 = crate::utils::get_data_sha1_async(&mut file).await?;
+    let actual_sha1 = crate::components::utils::get_data_sha1_async(&mut file).await
+        .map_err(|e| VanillaError::DownloadFailed(e.to_string()))?;
     Ok(actual_sha1 == expected_sha1)
 }
 
@@ -251,7 +252,7 @@ pub trait VanillaDownloadExt: Sync {
 //  VanillaDownloadExt 实现
 // ============================================================================
 
-impl<R: Reporter> VanillaDownloadExt for Downloader<R> {
+impl<R: Reporter + ReporterExt> VanillaDownloadExt for Downloader<R> {
     async fn get_available_vanilla_versions(&self) -> VanillaResult<VersionManifest> {
         let url = match self.source {
             DownloadSource::Default => "https://piston-meta.mojang.com/mc/game/version_manifest.json",
@@ -345,7 +346,7 @@ impl<R: Reporter> VanillaDownloadExt for Downloader<R> {
         libraries: &[Library],
     ) -> VanillaResult<HashMap<String, Vec<String>>> {
         let reporter = self.reporter.fork();
-        reporter.set_message("正在检索并下载依赖库".into());
+        reporter.set_message("正在检索并下载依赖库");
 
         let mut tasks = Vec::new();
         let mut native_jars_mapping: HashMap<String, Vec<String>> = HashMap::new();
@@ -544,7 +545,7 @@ impl<R: Reporter> VanillaDownloadExt for Downloader<R> {
             if let Some(parent) = log4j_path.parent() {
                 fs::create_dir_all(parent).await?;
             }
-            fs::write(&log4j_path, crate::client::LOG4J_PATCH).await?;
+            fs::write(&log4j_path, crate::components::client::LOG4J_PATCH).await?;
         }
 
         // 下载资源文件
@@ -587,7 +588,7 @@ impl<R: Reporter> VanillaDownloadExt for Downloader<R> {
 
         let total = download_tasks.len();
         reporter.set_max_progress(total as f64);
-        reporter.set_message("下载资源文件".into());
+        reporter.set_message("下载资源文件");
 
         use futures::stream::{self, StreamExt};
         let semaphore = self.semaphore().clone();
@@ -612,7 +613,7 @@ impl<R: Reporter> VanillaDownloadExt for Downloader<R> {
         // 解压原生库
         let native_dir = self.versions_dir().join(version_name).join("natives");
         let total_natives: usize = native_jars.values().map(|v| v.len()).sum();
-        reporter.set_message("正在解压原生库".into());
+        reporter.set_message("正在解压原生库");
         reporter.set_max_progress(total_natives as f64);
 
         for (platform, jars) in &native_jars {
@@ -644,8 +645,12 @@ impl<R: Reporter> VanillaDownloadExt for Downloader<R> {
 
         // 下载版本元数据 JSON
         let version_file = versions_path.join(version_name).join(format!("{}.json", version_name));
-        let url_obj = Url::parse(&version_info.url)?;
-        let path = url_obj.path();
+        // 从版本清单中查找版本 URL
+        let manifest = self.get_available_vanilla_versions().await?;
+        let version_entry = manifest.versions.iter()
+            .find(|v| v.id == version_name)
+            .ok_or_else(|| VanillaError::MissingMetadata(format!("版本 {} 未在清单中找到", version_name)))?;
+        let path = version_entry.url.path();
 
         let mirror = MirrorManager::default();
         let temp_path = version_file.with_extension("tmp");
@@ -698,12 +703,12 @@ pub async fn unzip_natives(unzip_file: &Path, unzip_dir: &Path) -> VanillaResult
             let mut file = archive.by_index(i)
                 .map_err(|e| VanillaError::UnzipFailed(format!("读取条目失败: {}", e)))?;
 
-            let file_name = match file.enclosed_name().and_then(|p| p.file_name()) {
-                Some(name) => name.to_owned(),
+            let file_name = match file.enclosed_name().and_then(|p| p.file_name().map(|n| n.to_owned())) {
+                Some(name) => name,
                 None => continue,
             };
 
-            let ext = file_name.extension()
+            let ext = Path::new(&file_name).extension()
                 .and_then(|e| e.to_str())
                 .unwrap_or_default();
             if !NATIVE_EXTS.contains(&ext) {

@@ -12,10 +12,11 @@ use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
 
 use super::Downloader;
-use crate::http::HttpClient;
-use crate::package::PackageName;
+use crate::components::http::HttpClient;
+use crate::components::package::PackageName;
+use crate::components::progress::ReporterExt;
 use crate::prelude::*;
-use crate::version::structs::VersionMeta;
+use crate::components::version::structs::VersionMeta;
 
 // ============================================================================
 //  错误类型
@@ -137,7 +138,7 @@ pub trait QuiltMCDownloadExt: Sync {
 //  实现
 // ============================================================================
 
-impl<R: Reporter> QuiltMCDownloadExt for Downloader<R> {
+impl<R: Reporter + ReporterExt> QuiltMCDownloadExt for Downloader<R> {
     async fn get_available_loaders(&self, vanilla_version: &str) -> QuiltMCResult<Vec<LoaderMetaItem>> {
         // 检查缓存
         {
@@ -191,8 +192,10 @@ impl<R: Reporter> QuiltMCDownloadExt for Downloader<R> {
 
         // 如果文件已存在且校验通过，则跳过
         if lib_path.is_file() && self.verify_data {
-            let expected_sha1 = self.get_library_sha1(&package, &mirrors).await?;
-            if self.verify_file(&lib_path, &expected_sha1).await? {
+            let expected_sha1 = self.get_library_sha1(&package).await
+                .map_err(|e| QuiltMCError::LibraryDownload(e.to_string()))?;
+            if self.verify_file(&lib_path, &expected_sha1).await
+                .map_err(|e| QuiltMCError::LibraryDownload(e.to_string()))? {
                 reporter.set_progress(1.0);
                 return Ok(());
             }
@@ -268,7 +271,7 @@ impl<R: Reporter> QuiltMCDownloadExt for Downloader<R> {
                 let downloader = &self;
                 let sem = semaphore.clone();
                 async move {
-                    let _permit = sem.acquire().await?;
+                    let _permit = sem.acquire().await.map_err(|e| QuiltMCError::Http(e.to_string()))?;
                     downloader.download_library(&name, &url).await
                 }
             })
@@ -287,7 +290,7 @@ impl<R: Reporter> QuiltMCDownloadExt for Downloader<R> {
 
     async fn download_quiltmc_post(&self, version_name: &str) -> QuiltMCResult<()> {
         let reporter = self.reporter.fork();
-        reporter.set_message("合并 QuiltMC 元数据".into());
+        reporter.set_message("合并 QuiltMC 元数据");
 
         let version_dir = self.versions_dir().join(version_name);
         let vanilla_path = version_dir.join(format!("{}.json", version_name));
@@ -310,7 +313,7 @@ impl<R: Reporter> QuiltMCDownloadExt for Downloader<R> {
         let merged_bytes = serde_json::to_vec(&vanilla_meta)?;
         fs::write(&vanilla_path, &merged_bytes).await?;
 
-        reporter.set_message("元数据合并完成".into());
+        reporter.set_message("元数据合并完成");
         Ok(())
     }
 }
@@ -319,19 +322,9 @@ impl<R: Reporter> QuiltMCDownloadExt for Downloader<R> {
 //  辅助方法（扩展 Downloader）
 // ============================================================================
 
-impl<R: Reporter> Downloader<R> {
-    /// 获取 libraries 目录路径
-    fn libraries_dir(&self) -> PathBuf {
-        self.minecraft_path().join("libraries")
-    }
-
-    /// 获取 versions 目录路径
-    fn versions_dir(&self) -> PathBuf {
-        self.minecraft_path().join("versions")
-    }
-
+impl<R: Reporter + ReporterExt> Downloader<R> {
     /// 获取库文件的 SHA1（从镜像列表中尝试）
-    async fn get_library_sha1(&self, package: &PackageName, mirrors: &[String]) -> QuiltMCResult<String> {
+    async fn get_quiltmc_library_sha1(&self, package: &PackageName, mirrors: &[String]) -> QuiltMCResult<String> {
         let client = HttpClient::default();
         for url in mirrors {
             let sha1_url = format!("{}.sha1", package.to_maven_jar_path(url));
@@ -344,9 +337,10 @@ impl<R: Reporter> Downloader<R> {
     }
 
     /// 校验文件完整性
-    async fn verify_file(&self, path: &Path, expected_sha1: &str) -> QuiltMCResult<bool> {
+    async fn verify_quiltmc_file(&self, path: &Path, expected_sha1: &str) -> QuiltMCResult<bool> {
         let mut file = fs::File::open(path).await?;
-        let actual_sha1 = crate::utils::get_data_sha1_async(&mut file).await?;
+        let actual_sha1 = crate::components::utils::get_data_sha1_async(&mut file).await
+            .map_err(|e| QuiltMCError::LibraryDownload(e.to_string()))?;
         Ok(actual_sha1 == expected_sha1)
     }
 }

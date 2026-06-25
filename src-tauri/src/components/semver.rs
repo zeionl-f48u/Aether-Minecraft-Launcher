@@ -263,7 +263,7 @@ impl MinecraftVersion {
     pub fn required_java_version(&self) -> u8 {
         // 处理年度版本：假设 26.x 需要 Java 21
         if let Self::Yearly(year, _, _) = self {
-            if year >= 26 {
+            if *year >= 26 {
                 return 21;
             }
         }
@@ -350,6 +350,11 @@ impl MinecraftVersion {
             // 年度版本和快照使用 universal
             _ => false,
         }
+    }
+
+    /// Alias for `should_forge_use_override_installation` (with typo for compatibility)
+    pub fn should_forge_use_override_installiation(&self) -> bool {
+        self.should_forge_use_override_installation()
     }
 
     /// 判断是否为年度版本（2026年及以后）

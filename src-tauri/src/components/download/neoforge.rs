@@ -8,10 +8,11 @@ use thiserror::Error;
 
 use super::{
     structs::{NeoForgeItemInfo, NeoForgeVersionsData},
-    Downloader,
+    DownloadSource, Downloader,
 };
-use crate::download::installer::{InstallerConfig, InstallerType, run_installer};
-use crate::http::HttpClient;
+use crate::components::download::installer::{InstallerConfig, InstallerType, run_installer};
+use crate::components::http::HttpClient;
+use crate::components::progress::ReporterExt;
 use crate::prelude::*;
 
 // ============================================================================
@@ -80,7 +81,7 @@ pub trait NeoForgeDownloadExt: Sync {
 //  实现
 // ============================================================================
 
-impl<R: Reporter> NeoForgeDownloadExt for Downloader<R> {
+impl<R: Reporter + ReporterExt> NeoForgeDownloadExt for Downloader<R> {
     async fn get_available_installers(
         &self,
         vanilla_version: &str,
@@ -127,9 +128,8 @@ impl<R: Reporter> NeoForgeDownloadExt for Downloader<R> {
         vanilla_version: &str,
         neoforge_version: &str,
     ) -> NeoForgeResult<()> {
-        let reporter = self.reporter.fork();
-        reporter.set_max_progress(1.0);
-        reporter.set_message(format!("下载 NeoForge 安装器 {}", neoforge_version));
+        self.reporter.set_max_progress(1.0);
+        self.reporter.set_message(format!("下载 NeoForge 安装器 {}", neoforge_version));
 
         // 构建 NeoForge 安装器配置
         let config = self.build_neoforge_config(version_name, vanilla_version, neoforge_version)?;
@@ -138,7 +138,7 @@ impl<R: Reporter> NeoForgeDownloadExt for Downloader<R> {
         run_installer::<R>(
             &config,
             InstallerType::NeoForge,
-            &reporter,
+            &self.reporter,
             self.source.clone(),
             self.minecraft_path(),
             self.verify_data,
@@ -146,7 +146,7 @@ impl<R: Reporter> NeoForgeDownloadExt for Downloader<R> {
         .await
         .map_err(|e| NeoForgeError::InstallerFailed(e.to_string()))?;
 
-        reporter.set_progress(1.0);
+        self.reporter.set_progress(1.0);
         Ok(())
     }
 
@@ -156,34 +156,16 @@ impl<R: Reporter> NeoForgeDownloadExt for Downloader<R> {
         vanilla_version: &str,
         neoforge_version: &str,
     ) -> NeoForgeResult<()> {
-        let reporter = self.reporter.fork();
-        reporter.set_max_progress(2.0);
-        reporter.set_message("正在修改 NeoForge 安装器...".to_string());
+        self.reporter.set_max_progress(2.0);
+        self.reporter.set_message("正在修改 NeoForge 安装器...".to_string());
 
         let config = self.build_neoforge_config(version_name, vanilla_version, neoforge_version)?;
 
         // 使用通用安装器执行后置步骤
-        // 这里需要修改安装器并运行
-        // 由于通用安装器已经集成了修改逻辑，我们调用 `run_installer` 的后续步骤
-        // 但为了清晰，我们可以直接调用修改和运行函数
-        // 简化：直接复用通用安装器的完整流程（前置 + 后置）
-        // 但由于前置已经执行过，这里我们只执行后置部分
-        // 实际上，更合理的方式是将安装分为两步，前置下载，后置修改+运行
-        // 这里我们重新调用一次完整的安装流程，但跳过已存在的文件检查（通过配置控制）
-        // 或者我们直接调用 `run_installer_post` 函数（需要实现）
-        // 为了简化重构，我们在这里直接调用通用安装器的完整流程（它会自动检查文件是否存在）
-        // 但重复调用会导致重复下载，所以我们需要一个标志来控制
-        // 更好的方法：在 `run_installer` 中提供 `skip_download` 参数
-
-        // 由于篇幅限制，这里简化为直接调用通用安装器
-        // 实际生产代码中，应拆分为 `run_installer_pre` 和 `run_installer_post`
-        // 或者将 `install_neoforge_pre` 和 `install_neoforge_post` 合并为一个方法
-
-        // 为了演示，我们直接使用完整流程（会检查已下载的文件）
         run_installer::<R>(
             &config,
             InstallerType::NeoForge,
-            &reporter,
+            &self.reporter,
             self.source.clone(),
             self.minecraft_path(),
             self.verify_data,
@@ -191,8 +173,8 @@ impl<R: Reporter> NeoForgeDownloadExt for Downloader<R> {
         .await
         .map_err(|e| NeoForgeError::InstallerFailed(e.to_string()))?;
 
-        reporter.set_progress(2.0);
-        reporter.set_message("NeoForge 安装完成".to_string());
+        self.reporter.set_progress(2.0);
+        self.reporter.set_message("NeoForge 安装完成".to_string());
         Ok(())
     }
 }
@@ -201,7 +183,7 @@ impl<R: Reporter> NeoForgeDownloadExt for Downloader<R> {
 //  辅助方法（构建配置）
 // ============================================================================
 
-impl<R: Reporter> Downloader<R> {
+impl<R: Reporter + ReporterExt> Downloader<R> {
     /// 构建 NeoForge 安装器配置
     fn build_neoforge_config(
         &self,
@@ -231,18 +213,19 @@ impl<R: Reporter> Downloader<R> {
         let target_version_dir = self.versions_dir().join(version_name);
 
         Ok(InstallerConfig {
+            version_name: version_name.to_string(),
+            vanilla_version: vanilla_version.to_string(),
+            loader_version: neoforge_version.to_string(),
             installer_urls: vec![
                 installer_url,
                 format!("https://bmclapi2.bangbang93.com/maven/net/neoforged/neoforge/{}/neoforge-{}-installer.jar", neoforge_version, neoforge_version),
                 format!("https://download.mcbbs.net/maven/net/neoforged/neoforge/{}/neoforge-{}-installer.jar", neoforge_version, neoforge_version),
                 format!("https://maven.neoforged.net/releases/net/neoforged/neoforge/{}/neoforge-{}-installer.jar", neoforge_version, neoforge_version),
             ],
+            installer_filename: format!("neoforge-{}-installer.jar", neoforge_version),
             installer_path,
             helper_path,
-            target_version_name: version_name.to_string(),
             target_version_dir,
-            vanilla_version: vanilla_version.to_string(),
-            forge_version: neoforge_version.to_string(),
             source: self.source.clone(),
             verify_data: self.verify_data,
         })

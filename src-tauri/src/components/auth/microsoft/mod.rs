@@ -3,19 +3,22 @@
 //! 使用设备码（Device Code）方式获取 Microsoft 账户授权，适用于无图形界面的环境。
 //! 参考：https://learn.microsoft.com/zh-cn/azure/active-directory/develop/v2-oauth2-device-code
 
+pub mod legacy;
+
 use std::time::Duration;
 
 use serde::Deserialize;
 use thiserror::Error;
 use tokio::time::sleep;
 
-use crate::auth::structs::AuthMethod;
-use crate::auth::microsoft::legacy::{
+use crate::components::auth::structs::AuthMethod;
+use crate::components::auth::microsoft::legacy::{
     xbox_authenticate, get_minecraft_access_token, get_minecraft_profile, verify_minecraft_license,
     download_and_parse_skin, get_xuid,
 };
-use crate::http::HttpClient;
-use crate::password::Password;
+use crate::components::http::HttpClient;
+use crate::components::password::Password;
+use crate::components::progress::ReporterExt;
 use crate::prelude::*;
 
 // ============================================================================
@@ -81,7 +84,7 @@ pub type MicrosoftDeviceResult<T> = Result<T, MicrosoftDeviceError>;
 // ============================================================================
 
 /// 设备码响应（首次请求）
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceCodeResponse {
     pub device_code: String,
     pub user_code: String,
@@ -94,7 +97,7 @@ pub struct DeviceCodeResponse {
 }
 
 /// 令牌响应（轮询获得）
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenResponse {
     pub token_type: String,
     pub scope: String,
@@ -157,7 +160,7 @@ impl MicrosoftDeviceAuth {
         let resp: DeviceCodeResponse = response
             .json()
             .await
-            .map_err(|e| MicrosoftDeviceError::Json(e))?;
+            .map_err(|e| MicrosoftDeviceError::Http(e.to_string()))?;
 
         if let Some(err) = resp.error {
             return Err(MicrosoftDeviceError::DeviceCodeRequest(err));
@@ -206,7 +209,7 @@ impl MicrosoftDeviceAuth {
             let resp: TokenResponse = response
                 .json()
                 .await
-                .map_err(|e| MicrosoftDeviceError::Json(e))?;
+                .map_err(|e| MicrosoftDeviceError::Http(e.to_string()))?;
 
             if let Some(err) = resp.error {
                 match err.as_str() {
@@ -319,7 +322,7 @@ impl MicrosoftDeviceAuth {
             .as_ref()
             .ok_or_else(|| MicrosoftDeviceError::TokenPolling("缺少刷新令牌".into()))?;
 
-        self.complete_auth(&token_resp.access_token, refresh_token.as_str())
+        self.complete_auth(token_resp.access_token.as_str(), refresh_token.as_str())
             .await
     }
 
@@ -346,7 +349,7 @@ impl MicrosoftDeviceAuth {
         let resp: TokenResponse = response
             .json()
             .await
-            .map_err(|e| MicrosoftDeviceError::Json(e))?;
+            .map_err(|e| MicrosoftDeviceError::Http(e.to_string()))?;
 
         if let Some(err) = resp.error {
             return Err(MicrosoftDeviceError::RefreshFailed(err));
@@ -367,7 +370,7 @@ impl MicrosoftDeviceAuth {
         // 重新执行认证流程（获取新的 Minecraft 令牌）
         let new_method = self
             .complete_auth(
-                &new_token.access_token,
+                new_token.access_token.as_str(),
                 new_token
                     .refresh_token
                     .as_ref()

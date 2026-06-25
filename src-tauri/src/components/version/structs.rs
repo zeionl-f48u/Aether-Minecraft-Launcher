@@ -19,10 +19,10 @@ use tokio::io::AsyncWriteExt;
 
 use super::VersionType;
 use crate::{
-    package::PackageName,
+    components::package::PackageName,
     prelude::*,
-    semver::MinecraftVersion,
-    utils::{get_full_path, NATIVE_ARCH_LAZY, TARGET_OS},
+    components::semver::MinecraftVersion,
+    components::utils::{get_full_path, NATIVE_ARCH_LAZY, TARGET_OS},
 };
 
 // ============================================================================
@@ -43,9 +43,6 @@ pub enum VersionError {
 
     #[error("TOML 解析失败: {0}")]
     TomlParse(#[from] toml::de::Error),
-
-    #[error("文件操作失败: {0}")]
-    Io(#[from] std::io::Error),
 
     #[error("目标版本已存在: {0}")]
     VersionExists(String),
@@ -308,13 +305,13 @@ impl VersionMeta {
         if let Some(java_version) = &self.java_version {
             java_version.major_version
         } else if let Some(assets) = &self.asset_index {
-            if let Ok((_, ver)) = crate::semver::parse_version(&assets.id) {
+            if let Some(ver) = crate::components::semver::parse_version(&assets.id) {
                 ver.required_java_version()
             } else {
                 8
             }
         } else if !self.inherits_from.is_empty() {
-            if let Ok((_, ver)) = crate::semver::parse_version(&self.inherits_from) {
+            if let Some(ver) = crate::components::semver::parse_version(&self.inherits_from) {
                 ver.required_java_version()
             } else {
                 8
@@ -438,7 +435,9 @@ impl VersionInfo {
         // 主 Jar 文件
         let jar_path = version_dir.join(format!("{}.jar", self.version));
         if jar_path.is_file() {
-            meta.main_jars.push(get_full_path(jar_path));
+            if let Ok(full_path) = get_full_path(jar_path) {
+                meta.main_jars.push(full_path);
+            }
         }
 
         // 计算所需 Java 版本
@@ -446,11 +445,11 @@ impl VersionInfo {
 
         // 解析 Minecraft 版本
         if let Some(assets) = &meta.asset_index {
-            if let Ok((_, ver)) = crate::semver::parse_version(&assets.id) {
+            if let Some(ver) = crate::components::semver::parse_version(&assets.id) {
                 self.minecraft_version = ver;
             }
         } else if !meta.inherits_from.is_empty() {
-            if let Ok((_, ver)) = crate::semver::parse_version(&meta.inherits_from) {
+            if let Some(ver) = crate::components::semver::parse_version(&meta.inherits_from) {
                 self.minecraft_version = ver;
             }
         }
@@ -592,7 +591,7 @@ impl VersionInfo {
         let mods = self.get_mods().await.unwrap_or_default();
         let mod_count = mods.len();
 
-        let mem_status = crate::utils::get_mem_status();
+        let mem_status = crate::components::utils::get_mem_status().unwrap_or(crate::components::utils::MemoryStatus { total: 0, free: 0 });
         let mut free = mem_status.free as i64;
 
         let (mem_min, mem_t1, mem_t2, mem_t3) = if mod_count > 0 {

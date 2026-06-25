@@ -9,10 +9,11 @@ use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
 use super::{DownloadSource, Downloader};
-use crate::http::HttpClient;
-use crate::package::PackageName;
+use crate::components::http::HttpClient;
+use crate::components::package::PackageName;
+use crate::components::progress::ReporterExt;
 use crate::prelude::*;
-use crate::version::structs::VersionMeta;
+use crate::components::version::structs::VersionMeta;
 
 // ============================================================================
 //  错误类型
@@ -119,9 +120,9 @@ pub trait FabricDownloadExt: Sync {
 //  为 Downloader 实现
 // ============================================================================
 
-impl<R: Reporter> FabricDownloadExt for Downloader<R> {
+impl<R: Reporter + ReporterExt> FabricDownloadExt for Downloader<R> {
     async fn get_available_loaders(&self, vanilla_version: &str) -> FabricResult<Vec<LoaderMetaItem>> {
-        let base = get_fabric_meta_base(self.source);
+        let base = get_fabric_meta_base(self.source.clone());
         let url = format!("{}/v2/versions/loader/{}", base, vanilla_version);
         let client = HttpClient::default();
         let data: Vec<LoaderMetaItem> = client
@@ -136,7 +137,7 @@ impl<R: Reporter> FabricDownloadExt for Downloader<R> {
             .parse()
             .map_err(|_| FabricError::InvalidResponse(format!("无效的包名: {}", name)))?;
 
-        let maven_base = get_maven_base(self.source);
+        let maven_base = get_maven_base(self.source.clone());
         let file_path = PathBuf::from(package.to_maven_jar_path(maven_base));
 
         // 确保目录存在
@@ -167,7 +168,7 @@ impl<R: Reporter> FabricDownloadExt for Downloader<R> {
         version_id: &str,
         loader_version: &str,
     ) -> FabricResult<()> {
-        let base = get_fabric_meta_base(self.source);
+        let base = get_fabric_meta_base(self.source.clone());
         let url = format!(
             "{}/v2/versions/loader/{}/{}/profile/json",
             base, version_id, loader_version
@@ -183,7 +184,7 @@ impl<R: Reporter> FabricDownloadExt for Downloader<R> {
         let meta: VersionMeta = serde_json::from_slice(&meta_bytes)?;
 
         // 保存临时元数据文件（使用 .tmp 后缀）
-        let version_dir = Path::new(&self.minecraft_version_path).join(version_name);
+        let version_dir = self.versions_dir().join(version_name);
         fs::create_dir_all(&version_dir).await?;
         let temp_meta_path = version_dir.join(format!("{}-fabric-loader.tmp.json", version_name));
         fs::write(&temp_meta_path, &meta_bytes).await?;
@@ -198,10 +199,8 @@ impl<R: Reporter> FabricDownloadExt for Downloader<R> {
             .collect();
 
         let total = libs.len();
-        if let Some(r) = self.reporter.sub() {
-            r.add_max_progress(total as f64);
-            r.set_message("正在下载 Fabric 支持库".into());
-        }
+        self.reporter.add_max_progress(total as f64);
+        self.reporter.set_message("正在下载 Fabric 支持库");
 
         let results = stream::iter(libs)
             .map(|name| {
@@ -217,21 +216,17 @@ impl<R: Reporter> FabricDownloadExt for Downloader<R> {
         // 检查是否有错误
         for (idx, result) in results.into_iter().enumerate() {
             if let Err(e) = result {
-                if let Some(r) = self.reporter.sub() {
-                    r.set_message(format!("下载库失败: {}", e));
-                }
+                self.reporter.set_message(format!("下载库失败: {}", e));
                 return Err(e);
             }
-            if let Some(r) = self.reporter.sub() {
-                r.add_progress(1.0);
-            }
+            self.reporter.add_progress(1.0);
         }
 
         Ok(())
     }
 
     async fn download_fabric_post(&self, version_name: &str) -> FabricResult<()> {
-        let version_dir = Path::new(&self.minecraft_version_path).join(version_name);
+        let version_dir = self.versions_dir().join(version_name);
         let vanilla_path = version_dir.join(format!("{}.json", version_name));
         let loader_temp_path = version_dir.join(format!("{}-fabric-loader.tmp.json", version_name));
 
@@ -260,10 +255,10 @@ impl<R: Reporter> FabricDownloadExt for Downloader<R> {
 //  辅助方法（扩展 Downloader）
 // ============================================================================
 
-impl<R: Reporter> Downloader<R> {
+impl<R: Reporter + ReporterExt> Downloader<R> {
     /// 获取库文件的 SHA1
-    async fn get_library_sha1(&self, package: &PackageName) -> FabricResult<String> {
-        let maven_base = get_maven_base(self.source);
+    pub(crate) async fn get_library_sha1(&self, package: &PackageName) -> FabricResult<String> {
+        let maven_base = get_maven_base(self.source.clone());
         let sha1_url = format!("{}.sha1", package.to_maven_jar_path(maven_base));
         let client = HttpClient::default();
         let sha1 = client
@@ -274,9 +269,10 @@ impl<R: Reporter> Downloader<R> {
     }
 
     /// 校验文件完整性
-    async fn verify_file(&self, path: &Path, expected_sha1: &str) -> FabricResult<bool> {
+    pub(crate) async fn verify_file(&self, path: &Path, expected_sha1: &str) -> FabricResult<bool> {
         let mut file = fs::File::open(path).await?;
-        let actual_sha1 = crate::utils::get_data_sha1_async(&mut file).await?;
+        let actual_sha1 = crate::components::utils::get_data_sha1_async(&mut file).await
+            .map_err(|e| FabricError::Http(e.to_string()))?;
         Ok(actual_sha1 == expected_sha1)
     }
 
@@ -284,7 +280,7 @@ impl<R: Reporter> Downloader<R> {
     fn build_mirror_urls(&self, package: &PackageName) -> Vec<String> {
         let mut uris = Vec::new();
         // 优先使用配置的源
-        let primary = get_maven_base(self.source);
+        let primary = get_maven_base(self.source.clone());
         uris.push(package.to_maven_jar_path(primary));
 
         // 添加其他镜像作为后备
@@ -309,9 +305,7 @@ impl<R: Reporter> Downloader<R> {
         let mut last_err = None;
 
         for (idx, uri) in uris.iter().enumerate() {
-            if let Some(r) = self.reporter.sub() {
-                r.set_message(format!("尝试下载 {} ({}/{})", uri, idx + 1, uris.len()));
-            }
+            self.reporter.set_message(format!("尝试下载 {} ({}/{})", uri, idx + 1, uris.len()));
             match client.download(&[uri.clone()], &temp_path).await {
                 Ok(()) => {
                     // 原子重命名

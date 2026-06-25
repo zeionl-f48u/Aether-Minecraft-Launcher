@@ -4,6 +4,7 @@ pub mod authlib;
 pub mod curseforge;
 pub mod fabric;
 pub mod forge;
+pub mod installer;
 pub mod mcmod;
 pub mod modrinth;
 pub mod neoforge;
@@ -30,7 +31,8 @@ pub use optifine::OptifineDownloadExt;
 pub use quiltmc::QuiltMCDownloadExt;
 pub use vanilla::VanillaDownloadExt;
 
-use self::structs::VersionInfo;
+use crate::components::progress::ReporterExt;
+use crate::components::version::structs::VersionInfo;
 use crate::prelude::*;
 
 // ============================================================================
@@ -67,6 +69,24 @@ pub enum DownloadError {
     #[error("任务失败: {0}")]
     Join(#[from] tokio::task::JoinError),
 
+    #[error("Fabric 错误: {0}")]
+    Fabric(#[from] fabric::FabricError),
+
+    #[error("Forge 错误: {0}")]
+    Forge(#[from] forge::ForgeError),
+
+    #[error("NeoForge 错误: {0}")]
+    NeoForge(#[from] neoforge::NeoForgeError),
+
+    #[error("QuiltMC 错误: {0}")]
+    QuiltMC(#[from] quiltmc::QuiltMCError),
+
+    #[error("Optifine 错误: {0}")]
+    Optifine(#[from] optifine::OptifineError),
+
+    #[error("Vanilla 错误: {0}")]
+    Vanilla(#[from] vanilla::VanillaError),
+
     #[error(transparent)]
     Other(#[from] anyhow::Error), // 用于兼容旧代码
 }
@@ -98,16 +118,12 @@ impl Default for DownloadSource {
 
 impl std::fmt::Display for DownloadSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                DownloadSource::Default => "默认（官方）下载源",
-                DownloadSource::BMCLAPI => "BMCLAPI 下载源",
-                DownloadSource::MCBBS => "MCBBS 下载源",
-                DownloadSource::Custom(url) => &format!("自定义下载源 ({})", url),
-            }
-        )
+        match self {
+            DownloadSource::Default => write!(f, "默认（官方）下载源"),
+            DownloadSource::BMCLAPI => write!(f, "BMCLAPI 下载源"),
+            DownloadSource::MCBBS => write!(f, "MCBBS 下载源"),
+            DownloadSource::Custom(url) => write!(f, "自定义下载源 ({})", url),
+        }
     }
 }
 
@@ -354,7 +370,7 @@ async fn refresh_libraries<R: Reporter>(
         // 实际上，`download_game` 最后会调用 `install_vanilla`，但这里我们需要单独下载库。
         // 临时方案：调用 `install_vanilla` 但指定一个不存在的版本？不。
         // 更好的做法：为 `Downloader` 添加一个 `download_libraries` 方法。
-        // 这里我们用一个简化的方案：如果 `VersionInfo` 有 `meta`，我们使用 `crate::download::vanilla::download_libraries`
+        // 这里我们用一个简化的方案：如果 `VersionInfo` 有 `meta`，我们使用 `crate::components::download::vanilla::download_libraries`
         // 但为了保持示例完整，我们暂不实现。
         // 实际优化中，应在 `VanillaDownloadExt` 中提供一个 `download_libraries` 方法。
         // 由于原代码中 `download_game` 最后有一段逻辑是直接调用 `self.download_libraries`，但该 trait 不存在。
@@ -388,7 +404,7 @@ pub trait GameDownload:
     ) -> DownloadResult<()>;
 }
 
-impl<R: Reporter> GameDownload for Downloader<R> {
+impl<R: Reporter + ReporterExt> GameDownload for Downloader<R> {
     async fn download_game(
         &self,
         version_name: &str,
@@ -411,29 +427,29 @@ impl<R: Reporter> GameDownload for Downloader<R> {
         // 先安装原版（可能需要）
         // 如果版本名称与 vanilla.id 相同，则直接安装原版，否则后续加载器会基于原版生成新版本
         // 但我们统一先安装原版（除非加载器本身会处理）
-        self.install_vanilla(&vanilla.id, &vanilla).await?;
+        self.install_vanilla(&vanilla.version, &vanilla).await?;
 
         // 3. 安装加载器
         if let Some(fabric_ver) = fabric {
             // Fabric
             self.reporter.set_message(format!("正在安装 Fabric {}", fabric_ver));
-            self.download_fabric_pre(version_name, &vanilla.id, fabric_ver).await?;
+            self.download_fabric_pre(version_name, &vanilla.version, fabric_ver).await?;
             self.download_fabric_post(version_name).await?;
         } else if let Some(quilt_ver) = quiltmc {
             // Quilt
             self.reporter.set_message(format!("正在安装 Quilt {}", quilt_ver));
-            self.download_quiltmc_pre(version_name, &vanilla.id, quilt_ver).await?;
+            self.download_quiltmc_pre(version_name, &vanilla.version, quilt_ver).await?;
             self.download_quiltmc_post(version_name).await?;
         } else if let Some(forge_ver) = forge {
             // Forge
             self.reporter.set_message(format!("正在安装 Forge {}", forge_ver));
-            self.install_forge_pre(version_name, &vanilla.id, forge_ver).await?;
-            self.install_forge_post(version_name, &vanilla.id, forge_ver).await?;
+            self.install_forge_pre(version_name, &vanilla.version, forge_ver).await?;
+            self.install_forge_post(version_name, &vanilla.version, forge_ver).await?;
         } else if let Some(neoforge_ver) = neoforge {
             // NeoForge
             self.reporter.set_message(format!("正在安装 NeoForge {}", neoforge_ver));
-            self.install_neoforge_pre(version_name, &vanilla.id, neoforge_ver).await?;
-            self.install_neoforge_post(version_name, &vanilla.id, neoforge_ver).await?;
+            self.install_neoforge_pre(version_name, &vanilla.version, neoforge_ver).await?;
+            self.install_neoforge_post(version_name, &vanilla.version, neoforge_ver).await?;
         }
 
         // 4. 安装 Optifine（如果有）
@@ -447,7 +463,7 @@ impl<R: Reporter> GameDownload for Downloader<R> {
             if !is_mod {
                 // 但我们已经安装了原版，所以不用重复
             }
-            self.install_optifine(version_name, &vanilla.id, optifine_type, optifine_patch, is_mod).await?;
+            self.install_optifine(version_name, &vanilla.version, optifine_type, optifine_patch, is_mod).await?;
         }
 
         // 5. 最后，刷新库文件（因为加载器和 Optifine 可能添加了新的库）

@@ -16,7 +16,7 @@ use serde::Deserialize;
 use tokio::fs;
 use tokio::sync::Mutex;
 
-use crate::http::HttpClient;
+use crate::components::http::HttpClient;
 use crate::prelude::*;
 
 // ============================================================================
@@ -132,8 +132,13 @@ pub async fn get_mod_name_info(modid: &str, source: McModSource) -> McModResult<
         McModSource::Combined(sources) => {
             let mut last_err = None;
             for src in sources {
-                match get_mod_name_info(modid, src).await {
-                    Ok(info) => return Ok(info), // 成功则立即返回
+                match fetch_from_source(modid, src).await {
+                    Ok(info) => {
+                        // 存入缓存
+                        let mut cache = CACHE.lock().await;
+                        cache.insert(modid.to_string(), info.clone());
+                        return Ok(info);
+                    }
                     Err(e) => last_err = Some(e),
                 }
             }
@@ -148,6 +153,39 @@ pub async fn get_mod_name_info(modid: &str, source: McModSource) -> McModResult<
     }
 
     Ok(info)
+}
+
+/// 非递归的获取模组名称（避免 async 递归导致的无限 Future 大小问题）
+async fn fetch_from_source(modid: &str, source: McModSource) -> McModResult<ModNameInfo> {
+    match source {
+        McModSource::Gitee => fetch_from_gitee(modid).await,
+        McModSource::McModApi { base_url } => fetch_from_mcmod_api(modid, &base_url).await,
+        McModSource::I18nDatabase { path } => fetch_from_i18n_db(modid, &path).await,
+        McModSource::CurseForge => fetch_from_curseforge(modid).await,
+        McModSource::Modrinth => fetch_from_modrinth(modid).await,
+        McModSource::Combined(sources) => {
+            let mut last_err = None;
+            for src in sources {
+                match dispatch_source(modid, src).await {
+                    Ok(info) => return Ok(info),
+                    Err(e) => last_err = Some(e),
+                }
+            }
+            Err(last_err.unwrap_or(McModError::AllSourcesFailed))
+        }
+    }
+}
+
+/// 分发到单个数据源（非递归）
+async fn dispatch_source(modid: &str, source: McModSource) -> McModResult<ModNameInfo> {
+    match source {
+        McModSource::Gitee => fetch_from_gitee(modid).await,
+        McModSource::McModApi { base_url } => fetch_from_mcmod_api(modid, &base_url).await,
+        McModSource::I18nDatabase { path } => fetch_from_i18n_db(modid, &path).await,
+        McModSource::CurseForge => fetch_from_curseforge(modid).await,
+        McModSource::Modrinth => fetch_from_modrinth(modid).await,
+        McModSource::Combined(_) => Err(McModError::AllSourcesFailed), // 不应嵌套 Combined
+    }
 }
 
 // ============================================================================

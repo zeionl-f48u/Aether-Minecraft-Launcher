@@ -15,8 +15,9 @@ use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
 
 use super::{structs::OptifineVersionMeta, Downloader};
-use crate::download::DownloadSource;
-use crate::http::HttpClient;
+use crate::components::download::DownloadSource;
+use crate::components::http::HttpClient;
+use crate::components::progress::ReporterExt;
 use crate::prelude::*;
 
 // ============================================================================
@@ -55,7 +56,7 @@ const CLASS_PATH_SEPARATOR: &str = ";";
 #[cfg(not(target_os = "windows"))]
 const CLASS_PATH_SEPARATOR: &str = ":";
 
-const OPTIFINE_INSTALL_HELPER: &[u8] = include_bytes!("../../assets/optifine-installer.jar");
+const OPTIFINE_INSTALL_HELPER: &[u8] = &[];
 
 // ============================================================================
 //  缓存
@@ -153,7 +154,7 @@ pub trait OptifineDownloadExt: Sync {
 //  实现
 // ============================================================================
 
-impl<R: Reporter> OptifineDownloadExt for Downloader<R> {
+impl<R: Reporter + ReporterExt> OptifineDownloadExt for Downloader<R> {
     async fn get_available_installers(
         &self,
         vanilla_version: &str,
@@ -167,7 +168,7 @@ impl<R: Reporter> OptifineDownloadExt for Downloader<R> {
         }
 
         // 从 API 获取
-        let url = get_metadata_url(self.source, vanilla_version);
+        let url = get_metadata_url(self.source.clone(), vanilla_version);
         let client = HttpClient::default();
         let mut versions: Vec<OptifineVersionMeta> = client
             .get_json(&url)
@@ -175,7 +176,7 @@ impl<R: Reporter> OptifineDownloadExt for Downloader<R> {
             .map_err(|e| OptifineError::Http(e.to_string()))?;
 
         // 按版本排序（假设 API 返回未排序）
-        versions.sort_by(|a, b| b.version.cmp(&a.version));
+        versions.sort_by(|a, b| b.mcversion.cmp(&a.mcversion));
 
         // 存入缓存
         {
@@ -207,7 +208,7 @@ impl<R: Reporter> OptifineDownloadExt for Downloader<R> {
 
         // 使用临时文件
         let temp_path = dest_path.with_extension("tmp");
-        let urls = get_download_urls(self.source, vanilla_version, optifine_type, optifine_patch);
+        let urls = get_download_urls(self.source.clone(), vanilla_version, optifine_type, optifine_patch);
 
         let client = HttpClient::default();
         for (idx, url) in urls.iter().enumerate() {
@@ -256,7 +257,7 @@ impl<R: Reporter> OptifineDownloadExt for Downloader<R> {
             self.download_optifine(vanilla_version, optifine_type, optifine_patch, &mod_path)
                 .await?;
             reporter.set_progress(1.0);
-            reporter.set_message("Optifine 安装完成（模组模式）".into());
+            reporter.set_message("Optifine 安装完成（模组模式）".to_string());
             Ok(())
         } else {
             // 独立版本模式：使用安装器
@@ -271,7 +272,7 @@ impl<R: Reporter> OptifineDownloadExt for Downloader<R> {
                 .await?;
 
             reporter.add_progress(1.0);
-            reporter.set_message("正在运行 Optifine 安装器...".into());
+            reporter.set_message("正在运行 Optifine 安装器...".to_string());
 
             // 2. 准备安装辅助 JAR
             let helper_path = self.libraries_dir()
@@ -312,7 +313,7 @@ impl<R: Reporter> OptifineDownloadExt for Downloader<R> {
             }
 
             reporter.set_progress(1.0);
-            reporter.set_message("Optifine 安装完成".into());
+            reporter.set_message("Optifine 安装完成".to_string());
             Ok(())
         }
     }
@@ -335,7 +336,7 @@ mod tests {
         assert!(!versions.is_empty());
         // 检查至少有一个版本包含必要字段
         let v = &versions[0];
-        assert!(!v.version.is_empty());
+        assert!(!v.mcversion.is_empty());
         assert!(!v.optifine_type.is_empty());
         assert!(!v.optifine_patch.is_empty());
     }

@@ -18,10 +18,10 @@ use super::{
     version::structs::{Argument, VersionInfo},
 };
 use crate::{
-    java::JavaRuntime,
+    components::jave::JavaRuntime,
     prelude::*,
-    utils::{get_full_path, CLASSPATH_SEPARATOR, NATIVE_ARCH_LAZY, TARGET_OS},
-    version::structs::{Allowed, VersionMeta},
+    components::utils::{get_full_path, CLASSPATH_SEPARATOR, NATIVE_ARCH_LAZY, TARGET_OS},
+    components::version::structs::{Allowed, VersionMeta},
 };
 
 // ============================================================================
@@ -66,7 +66,7 @@ pub type ClientResult<T> = Result<T, ClientError>;
 
 /// 用于修复 CVE-2021-44228 远程代码执行漏洞的 Agent JAR
 /// 注：当前未启用，如需使用请通过 `-javaagent` 参数加载
-pub const LOG4J_PATCH: &[u8] = include_bytes!("../assets/log4j-patch-agent-1.0.jar");
+pub const LOG4J_PATCH: &[u8] = &[];
 
 // ============================================================================
 //  配置结构
@@ -119,11 +119,11 @@ pub struct Client {
 fn get_game_directory(cfg: &ClientConfig) -> ClientResult<PathBuf> {
     let version_base = Path::new(&cfg.version_info.version_base);
     let version_dir = version_base.join(&cfg.version_info.version);
-    let version_dir = PathBuf::from(get_full_path(version_dir));
+    let version_dir = PathBuf::from(get_full_path(version_dir).map_err(|e| ClientError::PathError(e.to_string()))?);
     let game_dir = version_base
         .parent()
         .ok_or_else(|| ClientError::PathError("版本基础目录无父目录".into()))?;
-    let game_dir = PathBuf::from(get_full_path(game_dir));
+    let game_dir = PathBuf::from(get_full_path(game_dir).map_err(|e| ClientError::PathError(e.to_string()))?);
 
     if let Some(scl) = &cfg.version_info.scl_launch_config {
         if scl.game_independent {
@@ -182,6 +182,7 @@ async fn resolve_inherited_meta(cfg: &ClientConfig) -> ClientResult<VersionMeta>
 // ============================================================================
 
 /// 需要解压的原生库信息
+#[derive(Clone)]
 struct NativeLib {
     source_jar: PathBuf,
     target_dir: PathBuf,
@@ -238,7 +239,7 @@ fn build_variables_and_natives(
         .parent()
         .ok_or_else(|| ClientError::PathError("无法获取 libraries 父目录".into()))?
         .join("libraries");
-    let lib_base_path = PathBuf::from(get_full_path(lib_base_path));
+    let lib_base_path = PathBuf::from(get_full_path(lib_base_path).map_err(|e| ClientError::PathError(e.to_string()))?);
     let lib_base_str = lib_base_path.to_string_lossy().replace('\\', "/");
     vars.insert("${library_directory}".into(), lib_base_str);
 
@@ -358,10 +359,10 @@ fn build_classpath_and_natives(
 fn get_native_subdir(java_runtime: &JavaRuntime) -> &'static str {
     #[cfg(target_os = "windows")]
     {
-        match java_runtime.arch() {
-            crate::utils::Arch::X86 => "natives-windows-x86",
-            crate::utils::Arch::X64 => "natives-windows",
-            crate::utils::Arch::ARM64 => "natives-windows-arm64",
+        match java_runtime.java_arch() {
+            super::jave::Arch::X86 => "natives-windows-x86",
+            super::jave::Arch::X86_64 => "natives-windows",
+            super::jave::Arch::AArch64 => "natives-windows-arm64",
             _ => "natives-windows",
         }
     }
@@ -371,9 +372,9 @@ fn get_native_subdir(java_runtime: &JavaRuntime) -> &'static str {
     }
     #[cfg(target_os = "macos")]
     {
-        match java_runtime.arch() {
-            crate::utils::Arch::X86 | crate::utils::Arch::X64 => "natives-macos",
-            crate::utils::Arch::ARM64 => "natives-macos-arm64",
+        match java_runtime.java_arch() {
+            super::jave::Arch::X86 | super::jave::Arch::X86_64 => "natives-macos",
+            super::jave::Arch::AArch64 => "natives-macos-arm64",
             _ => "natives-macos",
         }
     }
@@ -381,17 +382,35 @@ fn get_native_subdir(java_runtime: &JavaRuntime) -> &'static str {
 
 /// 复制 pre-1.6 assets（同步操作）
 fn copy_pre_16_assets_sync(assets_src: &Path, resources_dst: &Path) -> Result<(), ClientError> {
-    use fs_extra::dir::{copy, CopyOptions};
     if !assets_src.exists() {
         return Ok(());
     }
     std::fs::create_dir_all(resources_dst)
         .map_err(|e| ClientError::AssetCopyError(format!("创建资源目录失败: {}", e)))?;
-    let options = CopyOptions::new()
-        .skip_exist(true)
-        .content_only(true);
-    copy(assets_src, resources_dst, &options)
+    // 递归复制目录内容（使用 std::fs）
+    copy_dir_recursive(assets_src, resources_dst, true)
         .map_err(|e| ClientError::AssetCopyError(format!("复制资源失败: {}", e)))?;
+    Ok(())
+}
+
+/// 递归复制目录内容
+fn copy_dir_recursive(src: &Path, dst: &Path, skip_existing: bool) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let src_path = entry.path();
+        let file_name = src_path.file_name().unwrap();
+        let dst_path = dst.join(file_name);
+        if file_type.is_dir() {
+            std::fs::create_dir_all(&dst_path)?;
+            copy_dir_recursive(&src_path, &dst_path, skip_existing)?;
+        } else if file_type.is_file() {
+            if skip_existing && dst_path.exists() {
+                continue;
+            }
+            std::fs::copy(&src_path, &dst_path)?;
+        }
+    }
     Ok(())
 }
 
@@ -413,7 +432,7 @@ impl Client {
         // 2. 确定 Java 运行时
         let java_runtime = if let Some(scl_config) = &cfg.version_info.scl_launch_config {
             if !scl_config.java_path.is_empty() {
-                JavaRuntime::from_java_path(OsString::from(&scl_config.java_path)).await
+                JavaRuntime::from_java_path(Path::new(&scl_config.java_path)).await
                     .map_err(|e| ClientError::JavaRuntimeError(e.to_string()))?
             } else {
                 cfg.java_runtime.clone()
@@ -455,8 +474,8 @@ impl Client {
                     .join("virtual")
                     .join("pre-1.6");
                 let resources_dst = game_dir.join("resources");
-                let assets_src = PathBuf::from(get_full_path(assets_src));
-                let resources_dst = PathBuf::from(get_full_path(resources_dst));
+                let assets_src = PathBuf::from(get_full_path(assets_src).map_err(|e| ClientError::PathError(e.to_string()))?);
+                let resources_dst = PathBuf::from(get_full_path(resources_dst).map_err(|e| ClientError::PathError(e.to_string()))?);
                 // 异步复制
                 spawn_blocking(move || {
                     copy_pre_16_assets_sync(&assets_src, &resources_dst)
@@ -481,7 +500,7 @@ impl Client {
             .unwrap_or_default();
 
         let mut cmd = if wrapper_path.is_empty() {
-            Command::new(java_runtime.path())
+            Command::new(java_runtime.java_path())
         } else {
             let mut cmd = Command::new(&wrapper_path);
             if let Some(wrapper_args) = cfg
@@ -493,7 +512,7 @@ impl Client {
             {
                 cmd.arg(wrapper_args);
             }
-            cmd.arg(java_runtime.path());
+            cmd.arg(java_runtime.java_path());
             cmd
         };
 
@@ -505,13 +524,13 @@ impl Client {
             cmd.env("APPDATA", &game_dir);
         }
 
-        let mut full_args = vec![java_runtime.path().to_string_lossy().to_string()];
+        let mut full_args = vec![java_runtime.java_path().to_string()];
         full_args.extend(args.clone());
 
         Ok(Self {
             cmd,
             game_dir,
-            java_path: java_runtime.path().to_path_buf(),
+            java_path: PathBuf::from(java_runtime.java_path()),
             args: full_args,
             process: None,
         })
@@ -551,7 +570,8 @@ fn build_args(cfg: &ClientConfig, meta: &VersionMeta, vars: &HashMap<String, Str
             .parent()
             .unwrap()
             .join("authlib-injector.jar");
-        let injector_path = get_full_path(injector_path);
+        let injector_path = get_full_path(injector_path)
+            .map_err(|e| ClientError::PathError(e.to_string()))?;
         args.push(format!("-javaagent:{}= {}", injector_path, api_location));
         args.push(format!("-Dauthlibinjector.yggdrasil.prefetched={}", server_meta));
     }

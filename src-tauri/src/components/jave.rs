@@ -280,7 +280,7 @@ pub async fn search_for_java() -> Vec<JavaRuntime> {
     // Process candidates concurrently with a limited degree of parallelism.
     use futures::stream::{self, StreamExt};
     let runtimes: Vec<JavaRuntime> = stream::iter(candidate_paths)
-        .map(|path| async {
+        .map(|path| async move {
             match JavaRuntime::from_java_path(&path).await {
                 Ok(runtime) => Some(runtime),
                 Err(e) => {
@@ -442,7 +442,7 @@ async fn find_common_windows_dirs() -> Vec<PathBuf> {
             if let Ok(mut entries) = fs::read_dir(&vendor_path).await {
                 while let Ok(Some(entry)) = entries.next_entry().await {
                     let path = entry.path();
-                    if path.is_dir().await.unwrap_or(false) {
+                    if path.is_dir() {
                         if let Some(java_path) = check_java_in_dir(&path).await {
                             paths.push(java_path);
                         }
@@ -482,7 +482,7 @@ async fn find_common_linux_dirs() -> Vec<PathBuf> {
         if let Ok(mut entries) = fs::read_dir(&dir_path).await {
             while let Ok(Some(entry)) = entries.next_entry().await {
                 let path = entry.path();
-                if path.is_dir().await.unwrap_or(false) {
+                if path.is_dir().unwrap_or(false) {
                     if let Some(java_path) = check_java_in_dir(&path).await {
                         paths.push(java_path);
                     }
@@ -511,7 +511,7 @@ async fn find_common_macos_dirs() -> Vec<PathBuf> {
         if let Ok(mut entries) = fs::read_dir(&dir_path).await {
             while let Ok(Some(entry)) = entries.next_entry().await {
                 let path = entry.path();
-                if path.is_dir().await.unwrap_or(false) {
+                if path.is_dir().unwrap_or(false) {
                     // macOS Java Virtual Machines have Contents/Home/bin/java
                     let home = path.join("Contents").join("Home");
                     if let Some(java_path) = check_java_in_dir(&home).await {

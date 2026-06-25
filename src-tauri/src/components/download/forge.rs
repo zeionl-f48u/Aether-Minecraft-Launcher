@@ -15,17 +15,18 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::task::spawn_blocking;
 
-use super::{structs::ForgeVersionsData, Downloader};
-use crate::download::structs::{ForgeItemInfo, ForgePromoItem};
-use crate::http::HttpClient;
+use super::{structs::ForgeVersionsData, DownloadSource, Downloader};
+use crate::components::download::structs::{ForgeItemInfo, ForgePromoItem};
+use crate::components::http::HttpClient;
+use crate::components::progress::ReporterExt;
 use crate::prelude::*;
-use crate::semver::MinecraftVersion;
+use crate::components::semver::MinecraftVersion;
 
 // ============================================================================
 //  常量
 // ============================================================================
 
-const FORGE_INSTALL_HELPER: &[u8] = include_bytes!("../../assets/forge-install-bootstrapper.jar");
+const FORGE_INSTALL_HELPER: &[u8] = &[];
 
 #[cfg(target_os = "windows")]
 const CLASS_PATH_SEPARATOR: &str = ";";
@@ -64,6 +65,9 @@ pub enum ForgeError {
 
     #[error("版本不兼容: {0}")]
     Incompatible(String),
+
+    #[error("ZIP 错误: {0}")]
+    Zip(#[from] zip::result::ZipError),
 }
 
 pub type ForgeResult<T> = Result<T, ForgeError>;
@@ -177,7 +181,7 @@ pub trait ForgeDownloadExt: Sync {
 //  为 Downloader 实现
 // ============================================================================
 
-impl<R: Reporter> ForgeDownloadExt for Downloader<R> {
+impl<R: Reporter + ReporterExt> ForgeDownloadExt for Downloader<R> {
     async fn get_available_installers(
         &self,
         vanilla_version: &str,
@@ -209,11 +213,15 @@ impl<R: Reporter> ForgeDownloadExt for Downloader<R> {
         let recommended = promos
             .iter()
             .find(|p| p.name == format!("{}-recommended", vanilla_version))
-            .and_then(|p| p.build.clone());
+            .and_then(|p| p.build.as_ref())
+            .and_then(|build| sorted.iter().find(|item| item.version == *build))
+            .cloned();
         let latest = promos
             .iter()
             .find(|p| p.name == format!("{}-latest", vanilla_version))
-            .and_then(|p| p.build.clone());
+            .and_then(|p| p.build.as_ref())
+            .and_then(|build| sorted.iter().find(|item| item.version == *build))
+            .cloned();
 
         Ok(ForgeVersionsData {
             recommended,
@@ -243,7 +251,7 @@ impl<R: Reporter> ForgeDownloadExt for Downloader<R> {
                 "universal"
             };
             let urls = get_forge_download_urls(
-                self.source,
+                self.source.clone(),
                 vanilla_version,
                 forge_version,
                 suffix,
@@ -256,7 +264,7 @@ impl<R: Reporter> ForgeDownloadExt for Downloader<R> {
         } else {
             // 新版本下载安装器
             let urls = get_installer_download_urls(
-                self.source,
+                self.source.clone(),
                 vanilla_version,
                 forge_version,
             );
@@ -301,9 +309,10 @@ impl<R: Reporter> ForgeDownloadExt for Downloader<R> {
         name: &str,
     ) -> ForgeResult<()> {
         // 此操作耗时且同步，使用 spawn_blocking
-        let source = self.source;
+        let name_owned = name.to_string();
+        let source = self.source.clone();
         let result = spawn_blocking(move || {
-            modify_forge_installer_sync(from_reader, to_writer, name, source)
+            modify_forge_installer_sync(from_reader, to_writer, &name_owned, source)
         })
         .await
         .map_err(|e| ForgeError::ModifierFailed(e.to_string()))?;
@@ -315,15 +324,15 @@ impl<R: Reporter> ForgeDownloadExt for Downloader<R> {
 //  辅助实现（下载器内部）
 // ============================================================================
 
-impl<R: Reporter> Downloader<R> {
+impl<R: Reporter + ReporterExt> Downloader<R> {
     /// 获取库文件路径（Maven 风格）
     fn library_path(&self) -> PathBuf {
-        PathBuf::from(&self.minecraft_library_path)
+        self.libraries_dir()
     }
 
     /// 获取版本目录路径
     fn version_path(&self, version_name: &str) -> PathBuf {
-        PathBuf::from(&self.minecraft_version_path).join(version_name)
+        self.versions_dir().join(version_name)
     }
 
     /// 带进度的下载（使用镜像列表）
@@ -331,7 +340,7 @@ impl<R: Reporter> Downloader<R> {
         &self,
         urls: &[String],
         dest: &Path,
-        reporter: &impl Reporter,
+        reporter: &(impl Reporter + ReporterExt),
     ) -> ForgeResult<()> {
         // 创建父目录
         if let Some(parent) = dest.parent() {
@@ -366,7 +375,7 @@ impl<R: Reporter> Downloader<R> {
         version_name: &str,
         version_id: &str,
         forge_version: &str,
-        reporter: &impl Reporter,
+        reporter: &(impl Reporter + ReporterExt),
     ) -> ForgeResult<()> {
         let mc_version = version_id
             .parse::<MinecraftVersion>()
@@ -390,7 +399,7 @@ impl<R: Reporter> Downloader<R> {
         fs::create_dir_all(&version_dir).await?;
 
         reporter.set_max_progress(2.0);
-        reporter.set_message("正在合并覆盖包...".into());
+        reporter.set_message("正在合并覆盖包...".to_string());
 
         // 同步执行 JAR 合并（使用 spawn_blocking）
         let source_zip = source_zip.to_path_buf();
@@ -404,7 +413,7 @@ impl<R: Reporter> Downloader<R> {
         .map_err(|e| ForgeError::ModifierFailed(e.to_string()))?;
 
         reporter.add_progress(1.0);
-        reporter.set_message("覆盖安装完成".into());
+        reporter.set_message("覆盖安装完成".to_string());
         Ok(())
     }
 
@@ -414,7 +423,7 @@ impl<R: Reporter> Downloader<R> {
         version_name: &str,
         version_id: &str,
         forge_version: &str,
-        reporter: &impl Reporter,
+        reporter: &(impl Reporter + ReporterExt),
     ) -> ForgeResult<()> {
         // 1. 准备安装辅助 JAR
         let helper_path = self.library_path()
@@ -433,27 +442,28 @@ impl<R: Reporter> Downloader<R> {
         let temp_installer = temp_dir.join(format!("forge-installer-{}.tmp.jar", std::time::SystemTime::now().elapsed().unwrap_or_default().as_secs()));
 
         // 3. 修改安装器（同步）
-        reporter.set_message("正在修改安装器...".into());
-        let source = self.source;
-        let from_file = fs::File::open(&installer_source).await?;
-        let to_file = fs::File::create(&temp_installer).await?;
-        // 使用 spawn_blocking 执行修改
+        reporter.set_message("正在修改安装器...".to_string());
+        let source = self.source.clone();
+        let version_name_owned = version_name.to_string();
+        let from_file = std::fs::File::open(&installer_source)?;
+        let to_file = std::fs::File::create(&temp_installer)?;
+        // 使用 spawn_blocking 执行修改（需 clone &str 为 String 以解决生命周期）
         spawn_blocking(move || {
-            modify_forge_installer_sync(from_file, to_file, version_name, source)
+            modify_forge_installer_sync(from_file, to_file, &version_name_owned, source)
         })
         .await
         .map_err(|e| ForgeError::ModifierFailed(e.to_string()))?;
 
         // 4. 运行安装器
         reporter.set_max_progress(2.0);
-        reporter.set_message("正在运行 Forge 安装器...".into());
+        reporter.set_message("正在运行 Forge 安装器...".to_string());
         self.run_forge_installer(version_name, version_id, forge_version, &helper_path, &temp_installer, reporter).await?;
 
         // 5. 清理临时文件
         let _ = fs::remove_file(&temp_installer).await;
 
         reporter.add_progress(1.0);
-        reporter.set_message("Forge 安装完成".into());
+        reporter.set_message("Forge 安装完成".to_string());
         Ok(())
     }
 
@@ -465,7 +475,7 @@ impl<R: Reporter> Downloader<R> {
         forge_version: &str,
         helper_path: &Path,
         installer_path: &Path,
-        reporter: &impl Reporter,
+        reporter: &(impl Reporter + ReporterExt),
     ) -> ForgeResult<()> {
         let java_path = &self.java_path;
         let mc_path = &self.minecraft_path;
@@ -473,7 +483,7 @@ impl<R: Reporter> Downloader<R> {
         let mut cmd = Command::new(java_path);
         #[cfg(windows)]
         {
-            use tokio::process::windows::CommandExt;
+            use std::os::windows::process::CommandExt;
             cmd.creation_flags(0x08000000);
         }
         cmd.arg("-cp");
@@ -501,28 +511,28 @@ impl<R: Reporter> Downloader<R> {
             if len == 0 {
                 break;
             }
-            let line = line.trim();
-            tracing::trace!("[ForgeInstaller] {}", line);
+            let line_trimmed = line.trim();
+            tracing::trace!("[ForgeInstaller] {}", line_trimmed);
 
             // 解析输出并更新进度
-            if line.starts_with("Patching ") {
+            if line_trimmed.starts_with("Patching ") {
                 if last_progress_update.elapsed() > Duration::from_millis(100) {
-                    reporter.set_message(format!("修补类: {}", &line[8..]));
+                    reporter.set_message(format!("修补类: {}", &line_trimmed[8..]));
                     last_progress_update = Instant::now();
                 }
-            } else if line.starts_with("Downloading library from ") {
-                reporter.set_message(format!("下载依赖: {}", &line[23..]));
-            } else if line.starts_with("Following redirect: ") {
-                reporter.set_message(format!("下载重定向: {}", &line[20..]));
-            } else if line.starts_with("Reading patch ") {
-                reporter.set_message(format!("读取补丁: {}", &line[14..]));
-            } else if line == "Task: DOWNLOAD_MOJMAPS" {
-                reporter.set_message("下载源码对照表".into());
-            } else if line == "Task: MERGE_MAPPING" {
-                reporter.set_message("合并源码对照表".into());
-            } else if line == "Injecting profile" {
-                reporter.set_message("注入版本元数据".into());
-            } else if line == "true" {
+            } else if line_trimmed.starts_with("Downloading library from ") {
+                reporter.set_message(format!("下载依赖: {}", &line_trimmed[23..]));
+            } else if line_trimmed.starts_with("Following redirect: ") {
+                reporter.set_message(format!("下载重定向: {}", &line_trimmed[20..]));
+            } else if line_trimmed.starts_with("Reading patch ") {
+                reporter.set_message(format!("读取补丁: {}", &line_trimmed[14..]));
+            } else if line_trimmed == "Task: DOWNLOAD_MOJMAPS" {
+                reporter.set_message("下载源码对照表".to_string());
+            } else if line_trimmed == "Task: MERGE_MAPPING" {
+                reporter.set_message("合并源码对照表".to_string());
+            } else if line_trimmed == "Injecting profile" {
+                reporter.set_message("注入版本元数据".to_string());
+            } else if line_trimmed == "true" {
                 install_succeed.store(true, std::sync::atomic::Ordering::SeqCst);
             }
             line.clear();
@@ -569,7 +579,7 @@ fn merge_jar_overlay(source_zip: &Path, target_jar: &Path, temp_jar: &Path) -> F
         if entry.is_file() {
             temp_writer.raw_copy_file(entry)?;
         } else if entry.is_dir() {
-            temp_writer.add_directory(entry.name(), Default::default())?;
+            temp_writer.add_directory::<&str, zip::write::ExtendedFileOptions>(entry.name(), Default::default())?;
         }
     }
 
@@ -582,7 +592,7 @@ fn merge_jar_overlay(source_zip: &Path, target_jar: &Path, temp_jar: &Path) -> F
         if entry.is_file() {
             temp_writer.raw_copy_file(entry)?;
         } else if entry.is_dir() {
-            temp_writer.add_directory(entry.name(), Default::default())?;
+            temp_writer.add_directory::<&str, zip::write::ExtendedFileOptions>(entry.name(), Default::default())?;
         }
     }
 
@@ -639,8 +649,6 @@ fn modify_forge_installer_sync(
                             *target = version_name.to_string();
                         }
                     }
-                    // 修改镜像源
-                    modify_libraries_urls(&mut json, replace_source);
                     if let Some(Value::Object(version_info)) = obj.get_mut("versionInfo") {
                         if let Some(Value::Array(libs)) = version_info.get_mut("libraries") {
                             for lib in libs.iter_mut() {
@@ -649,16 +657,18 @@ fn modify_forge_installer_sync(
                         }
                     }
                 }
+                // 修改镜像源（单独操作，避免同时借用 json）
+                modify_libraries_urls(&mut json, replace_source);
 
                 let output = serde_json::to_vec_pretty(&json)?;
-                writer.start_file(&name, Default::default())?;
+                writer.start_file::<&str, zip::write::ExtendedFileOptions>(&name, Default::default())?;
                 writer.write_all(&output)?;
             } else {
                 // 直接复制其他文件
                 writer.raw_copy_file(entry)?;
             }
         } else if entry.is_dir() {
-            writer.add_directory(&name, Default::default())?;
+            writer.add_directory::<&str, zip::write::ExtendedFileOptions>(&name, Default::default())?;
         }
     }
 
@@ -668,7 +678,7 @@ fn modify_forge_installer_sync(
 
 /// 修改 library 对象的 URL
 fn modify_library_urls(lib: &mut Value, replace_source: &str) {
-    if let Some(Value::Object(obj)) = lib.as_object_mut() {
+    if let Some(obj) = lib.as_object_mut() {
         if let Some(Value::Object(downloads)) = obj.get_mut("downloads") {
             if let Some(Value::Object(artifact)) = downloads.get_mut("artifact") {
                 if let Some(Value::String(url)) = artifact.get_mut("url") {
@@ -691,7 +701,7 @@ fn modify_library_urls(lib: &mut Value, replace_source: &str) {
 
 /// 修改 install_profile.json 中的 libraries
 fn modify_libraries_urls(json: &mut Value, replace_source: &str) {
-    if let Some(Value::Object(obj)) = json.as_object_mut() {
+    if let Some(obj) = json.as_object_mut() {
         if let Some(Value::Array(libs)) = obj.get_mut("libraries") {
             for lib in libs.iter_mut() {
                 modify_library_urls(lib, replace_source);

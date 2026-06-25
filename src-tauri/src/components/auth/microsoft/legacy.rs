@@ -7,10 +7,10 @@ use serde::Deserialize;
 use thiserror::Error;
 use url::Url;
 
-use crate::auth::parse_head_skin;
-use crate::auth::structs::AuthMethod;
-use crate::http::HttpClient;
-use crate::password::Password;
+use crate::components::auth::parse_head_skin;
+use crate::components::auth::structs::AuthMethod;
+use crate::components::http::HttpClient;
+use crate::components::password::Password;
 use crate::prelude::*;
 
 // ============================================================================
@@ -126,7 +126,7 @@ struct MinecraftXboxLoginResponse {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct MinecraftProfileResponse {
+pub struct MinecraftProfileResponse {
     pub id: String,
     pub name: String,
     #[serde(default)]
@@ -135,7 +135,7 @@ struct MinecraftProfileResponse {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct MinecraftSkin {
+pub struct MinecraftSkin {
     pub state: String,
     pub url: String,
 }
@@ -156,7 +156,7 @@ pub async fn authenticate_with_code(code: &str) -> MicrosoftResult<AuthMethod> {
     let (access_token, refresh_token) = request_oauth_token(code, false).await?;
 
     // 2. 完成 Xbox 认证链
-    let (uhs, xsts_token) = xbox_authenticate(&access_token).await?;
+    let (uhs, xsts_token) = xbox_authenticate(access_token.as_str()).await?;
 
     // 3. 获取 Minecraft 访问令牌
     let minecraft_token = get_minecraft_access_token(&uhs, &xsts_token).await?;
@@ -213,7 +213,7 @@ async fn request_oauth_token(credit: &str, is_refresh: bool) -> MicrosoftResult<
     let resp: OAuth20TokenResponse = response
         .json()
         .await
-        .map_err(|e| MicrosoftError::Json(e))?;
+        .map_err(|e| MicrosoftError::Http(e.to_string()))?;
 
     if !resp.error.is_empty() {
         return Err(MicrosoftError::TokenRequest(format!(
@@ -226,7 +226,7 @@ async fn request_oauth_token(credit: &str, is_refresh: bool) -> MicrosoftResult<
 }
 
 /// 步骤 2: Xbox 认证（获取 userhash 和 XSTS token）
-async fn xbox_authenticate(access_token: &str) -> MicrosoftResult<(String, String)> {
+pub async fn xbox_authenticate(access_token: &str) -> MicrosoftResult<(String, String)> {
     // 2a: 认证到 Xbox Live
     let xbox_auth_body = serde_json::json!({
         "Properties": {
@@ -258,7 +258,7 @@ async fn xbox_authenticate(access_token: &str) -> MicrosoftResult<(String, Strin
     let xbox_auth: XboxAuthResponse = xbox_response
         .json()
         .await
-        .map_err(|e| MicrosoftError::Json(e))?;
+        .map_err(|e| MicrosoftError::Http(e.to_string()))?;
 
     let token = xbox_auth.token;
     let uhs = xbox_auth
@@ -298,13 +298,13 @@ async fn xbox_authenticate(access_token: &str) -> MicrosoftResult<(String, Strin
     let xsts_auth: XboxAuthResponse = xsts_response
         .json()
         .await
-        .map_err(|e| MicrosoftError::Json(e))?;
+        .map_err(|e| MicrosoftError::Http(e.to_string()))?;
 
     Ok((uhs, xsts_auth.token))
 }
 
 /// 步骤 3: 获取 Minecraft 访问令牌
-async fn get_minecraft_access_token(uhs: &str, xsts_token: &str) -> MicrosoftResult<Password> {
+pub async fn get_minecraft_access_token(uhs: &str, xsts_token: &str) -> MicrosoftResult<Password> {
     let body = serde_json::json!({
         "identityToken": format!("XBL3.0 x={};{}", uhs, xsts_token)
     });
@@ -320,11 +320,12 @@ async fn get_minecraft_access_token(uhs: &str, xsts_token: &str) -> MicrosoftRes
         .await
         .map_err(|e| MicrosoftError::Http(e.to_string()))?;
 
-    if !response.status().is_success() {
+    let status = response.status();
+    if !status.is_success() {
         let error_text = response.text().await.unwrap_or_default();
         return Err(MicrosoftError::MinecraftAuth(format!(
             "状态码: {}, 响应: {}",
-            response.status(),
+            status,
             error_text
         )));
     }
@@ -332,13 +333,13 @@ async fn get_minecraft_access_token(uhs: &str, xsts_token: &str) -> MicrosoftRes
     let resp: MinecraftXboxLoginResponse = response
         .json()
         .await
-        .map_err(|e| MicrosoftError::Json(e))?;
+        .map_err(|e| MicrosoftError::Http(e.to_string()))?;
 
     Ok(resp.access_token)
 }
 
 /// 步骤 4: 验证 Minecraft 许可证
-async fn verify_minecraft_license(access_token: &Password) -> MicrosoftResult<()> {
+pub async fn verify_minecraft_license(access_token: &Password) -> MicrosoftResult<()> {
     let client = HttpClient::default();
     let response = client
         .inner()
@@ -357,7 +358,7 @@ async fn verify_minecraft_license(access_token: &Password) -> MicrosoftResult<()
     let store: MinecraftStoreResponse = response
         .json()
         .await
-        .map_err(|e| MicrosoftError::Json(e))?;
+        .map_err(|e| MicrosoftError::Http(e.to_string()))?;
 
     if store.items.is_empty() {
         return Err(MicrosoftError::NoMinecraftLicense);
@@ -367,7 +368,7 @@ async fn verify_minecraft_license(access_token: &Password) -> MicrosoftResult<()
 }
 
 /// 步骤 5: 获取 Minecraft 玩家档案
-async fn get_minecraft_profile(access_token: &Password) -> MicrosoftResult<MinecraftProfileResponse> {
+pub async fn get_minecraft_profile(access_token: &Password) -> MicrosoftResult<MinecraftProfileResponse> {
     let client = HttpClient::default();
     let response = client
         .inner()
@@ -388,7 +389,7 @@ async fn get_minecraft_profile(access_token: &Password) -> MicrosoftResult<Minec
     let profile: MinecraftProfileResponse = response
         .json()
         .await
-        .map_err(|e| MicrosoftError::Json(e))?;
+        .map_err(|e| MicrosoftError::Http(e.to_string()))?;
 
     if !profile.error.is_empty() {
         return Err(MicrosoftError::MinecraftAuth(profile.error));
@@ -398,7 +399,7 @@ async fn get_minecraft_profile(access_token: &Password) -> MicrosoftResult<Minec
 }
 
 /// 步骤 6: 获取 XUID（用户 ID）
-async fn get_xuid(uhs: &str, xsts_token: &str) -> MicrosoftResult<String> {
+pub async fn get_xuid(uhs: &str, xsts_token: &str) -> MicrosoftResult<String> {
     let client = HttpClient::default();
     let response = client
         .inner()
@@ -419,7 +420,7 @@ async fn get_xuid(uhs: &str, xsts_token: &str) -> MicrosoftResult<String> {
     let json: serde_json::Value = response
         .json()
         .await
-        .map_err(|e| MicrosoftError::Json(e))?;
+        .map_err(|e| MicrosoftError::Http(e.to_string()))?;
     Ok(json
         .pointer("/xuid")
         .and_then(|v| v.as_str())
@@ -428,7 +429,7 @@ async fn get_xuid(uhs: &str, xsts_token: &str) -> MicrosoftResult<String> {
 }
 
 /// 步骤 7: 下载并解析皮肤头像
-async fn download_and_parse_skin(skins: &[MinecraftSkin]) -> MicrosoftResult<(Vec<u8>, Vec<u8>)> {
+pub async fn download_and_parse_skin(skins: &[MinecraftSkin]) -> MicrosoftResult<(Vec<u8>, Vec<u8>)> {
     let active_skin = skins
         .iter()
         .find(|s| s.state == "ACTIVE")
@@ -468,7 +469,7 @@ pub async fn refresh_auth(method: &mut AuthMethod) -> MicrosoftResult<()> {
         request_oauth_token(refresh_token.as_str(), true).await?;
 
     // 完成 Xbox 和 Minecraft 认证
-    let (uhs, xsts_token) = xbox_authenticate(&new_access_token).await?;
+    let (uhs, xsts_token) = xbox_authenticate(new_access_token.as_str()).await?;
     let minecraft_token = get_minecraft_access_token(&uhs, &xsts_token).await?;
 
     // 更新 method

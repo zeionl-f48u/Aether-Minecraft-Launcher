@@ -15,7 +15,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 ///
 /// # 示例
 /// ```
-/// use scl_core::password::Password;
+/// use aether_minecraft_launcher_lib::components::password::Password;
 /// let password = Password::from("my_secret");
 /// println!("{}", password); // 输出: ***Password***
 /// ```

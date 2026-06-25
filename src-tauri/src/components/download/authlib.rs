@@ -8,7 +8,8 @@ use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
 use super::{DownloadSource, Downloader};
-use crate::http::HttpClient;
+use crate::components::http::HttpClient;
+use crate::components::progress::ReporterExt;
 use crate::prelude::*;
 
 // ============================================================================
@@ -83,14 +84,14 @@ pub trait AuthlibDownloadExt: Sync {
 //  为 Downloader 实现
 // ============================================================================
 
-impl<R: Reporter> AuthlibDownloadExt for Downloader<R> {
+impl<R: Reporter + ReporterExt> AuthlibDownloadExt for Downloader<R> {
     async fn download_authlib_injector(&self, dest_path: &Path) -> AuthlibResult<()> {
         let reporter = &self.reporter;
         reporter.add_max_progress(2.0);
         reporter.set_message("正在获取 Authlib-Injector 版本元数据".to_string());
 
         // 1. 获取元数据
-        let metadata_url = get_metadata_url(self.source);
+        let metadata_url = get_metadata_url(self.source.clone());
         let latest_data: LatestData = HttpClient::default()
             .get_json(metadata_url)
             .await
@@ -158,7 +159,7 @@ impl<R: Reporter> AuthlibDownloadExt for Downloader<R> {
     }
 
     async fn install_authlib_injector(&self) -> AuthlibResult<()> {
-        let minecraft_path = Path::new(self.minecraft_path.as_str());
+        let minecraft_path = Path::new(&self.minecraft_path);
         let dest_path = minecraft_path.join("authlib-injector.jar");
 
         if !dest_path.is_file() {
@@ -178,7 +179,7 @@ impl<R: Reporter> AuthlibDownloadExt for Downloader<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{download::Downloader, progress::NR};
+    use crate::{components::download::Downloader, components::progress::NR};
     use tempfile::tempdir;
 
     // 注意：测试需要网络，可标记为 #[ignore]

@@ -85,6 +85,34 @@ pub trait Reporter: Send + Sync {
 }
 
 // ============================================================================
+//  报告器扩展 trait（不与 Reporter trait 耦合，避免 dyn 兼容性问题）
+// ============================================================================
+
+/// 为报告器提供额外方法（set_message, set_progress 等）
+/// 单独的 trait 避免破坏 Reporter 的 dyn 兼容性
+pub trait ReporterExt: Reporter {
+    /// 设置当前进度消息
+    fn set_message(&self, _msg: impl Into<String>) {}
+    /// 设置当前进度值 (0.0 ~ max)
+    fn set_progress(&self, _value: f64) {}
+    /// 设置最大进度值
+    fn set_max_progress(&self, _max: f64) {}
+    /// 增加进度值
+    fn add_progress(&self, _delta: f64) {}
+    /// 增加最大进度值
+    fn add_max_progress(&self, _delta: f64) {}
+    /// 移除进度指示器
+    fn remove_progress(&self) {}
+    /// 派生子报告器
+    fn fork(&self) -> Self where Self: Sized { panic!("fork not implemented") }
+    /// 获取子报告器引用（可选）
+    fn sub(&self) -> Option<&Self> { None }
+}
+
+// 为所有 R: Reporter 自动实现 ReporterExt
+impl<T: Reporter> ReporterExt for T {}
+
+// ============================================================================
 //  No-Op Reporter (NR)
 // ============================================================================
 

@@ -11,7 +11,7 @@ use serde::Deserialize;
 use thiserror::Error;
 use tokio::sync::Mutex;
 
-use crate::http::HttpClient;
+use crate::components::http::HttpClient;
 use crate::prelude::*;
 
 // ============================================================================
@@ -46,7 +46,7 @@ pub type ModrinthResult<T> = Result<T, ModrinthError>;
 // ============================================================================
 
 /// 模组搜索结果
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ModResult {
     /// 模组 ID（通常为字符串，例如 "fabric-api"）
     pub project_id: String,

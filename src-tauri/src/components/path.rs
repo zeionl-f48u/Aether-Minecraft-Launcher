@@ -132,7 +132,6 @@ impl MinecraftPaths {
 // ============================================================================
 
 /// 已弃用：请使用 `default_minecraft_dir()` 或 `MinecraftPaths`
-#[deprecated(since = "0.2.0", note = "请使用函数式 API")]
 pub static MINECRAFT_PATH: once_cell::sync::Lazy<String> =
     once_cell::sync::Lazy::new(|| {
         default_minecraft_dir()
@@ -140,7 +139,6 @@ pub static MINECRAFT_PATH: once_cell::sync::Lazy<String> =
             .unwrap_or_else(|_| ".minecraft".into())
     });
 
-#[deprecated(since = "0.2.0", note = "请使用函数式 API")]
 pub static MINECRAFT_ASSETS_PATH: once_cell::sync::Lazy<String> =
     once_cell::sync::Lazy::new(|| {
         default_assets_dir()
@@ -148,7 +146,6 @@ pub static MINECRAFT_ASSETS_PATH: once_cell::sync::Lazy<String> =
             .unwrap_or_else(|_| format!("{}/assets", *MINECRAFT_PATH))
     });
 
-#[deprecated(since = "0.2.0", note = "请使用函数式 API")]
 pub static MINECRAFT_LIBRARIES_PATH: once_cell::sync::Lazy<String> =
     once_cell::sync::Lazy::new(|| {
         default_libraries_dir()
@@ -156,7 +153,6 @@ pub static MINECRAFT_LIBRARIES_PATH: once_cell::sync::Lazy<String> =
             .unwrap_or_else(|_| format!("{}/libraries", *MINECRAFT_PATH))
     });
 
-#[deprecated(since = "0.2.0", note = "请使用函数式 API")]
 pub static MINECRAFT_VERSIONS_PATH: once_cell::sync::Lazy<String> =
     once_cell::sync::Lazy::new(|| {
         default_versions_dir()

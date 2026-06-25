@@ -6,7 +6,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::password::Password;
+use crate::components::password::Password;
 
 // ============================================================================
 //  认证方式枚举（公开 API）
@@ -156,7 +156,7 @@ impl AuthMethod {
 pub(crate) mod mojang {
     use serde::{Deserialize, Serialize};
 
-    use crate::password::Password;
+    use crate::components::password::Password;
 
     /// 认证请求体
     #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]

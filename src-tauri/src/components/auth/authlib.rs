@@ -10,14 +10,14 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use url::Url;
 
-use crate::auth::get_head_skin;
-use crate::auth::structs::mojang::{
+use crate::components::auth::get_head_skin;
+use crate::components::auth::structs::mojang::{
     AuthenticateBody, AuthenticateResponse, AvailableProfile, ErrorResponse, ProfileResponse,
     ValidateResponse,
 };
-use crate::auth::structs::AuthMethod;
-use crate::http::HttpClient;
-use crate::password::Password;
+use crate::components::auth::structs::AuthMethod;
+use crate::components::http::HttpClient;
+use crate::components::password::Password;
 use crate::prelude::*;
 
 // ============================================================================
@@ -160,7 +160,7 @@ pub async fn refresh_token(
         let error: ErrorResponse = response
             .json()
             .await
-            .map_err(|e| AuthlibError::Json(e))?;
+            .map_err(|e| AuthlibError::Http(e.to_string()))?;
         return Err(AuthlibError::RefreshFailed(format!(
             "{}: {}",
             error.error, error.error_message
@@ -170,7 +170,7 @@ pub async fn refresh_token(
     let auth_resp: AuthenticateResponse = response
         .json()
         .await
-        .map_err(|e| AuthlibError::Json(e))?;
+        .map_err(|e| AuthlibError::Http(e.to_string()))?;
 
     let selected_profile = auth_resp
         .selected_profile
@@ -199,6 +199,28 @@ pub async fn refresh_token(
 // ============================================================================
 //  开始认证（登录）
 // ============================================================================
+
+/// 简化的认证函数（供 `commands.rs` 调用）
+///
+/// 使用 Authlib-Injector 服务器进行认证登录，返回单个 `AuthMethod`。
+pub async fn authenticate(
+    api_location: &str,
+    username: &str,
+    password: &str,
+) -> AuthlibResult<AuthMethod> {
+    let results = start_auth(
+        None::<crate::components::progress::NoopReporter>,
+        api_location,
+        username.to_string(),
+        Password::from(password),
+        "",
+    )
+    .await?;
+    results
+        .into_iter()
+        .next()
+        .ok_or(AuthlibError::NoProfile)
+}
 
 /// 使用 Authlib-Injector 服务器进行认证登录
 ///
@@ -251,7 +273,7 @@ pub async fn start_auth(
         let error: ErrorResponse = response
             .json()
             .await
-            .map_err(|e| AuthlibError::Json(e))?;
+            .map_err(|e| AuthlibError::Http(e.to_string()))?;
         return Err(AuthlibError::AuthFailed(format!(
             "{}: {}",
             error.error, error.error_message
@@ -261,7 +283,7 @@ pub async fn start_auth(
     let auth_resp: AuthenticateResponse = response
         .json()
         .await
-        .map_err(|e| AuthlibError::Json(e))?;
+        .map_err(|e| AuthlibError::Http(e.to_string()))?;
 
     // 4. 处理返回的角色
     let profiles = if let Some(selected) = auth_resp.selected_profile {
@@ -354,7 +376,7 @@ async fn fetch_server_metadata(
         let meta: ApiMetaData = meta_response
             .json()
             .await
-            .map_err(|e| AuthlibError::Json(e))?;
+            .map_err(|e| AuthlibError::Http(e.to_string()))?;
 
         let name = if meta.meta.server_name.is_empty() {
             Url::parse(api_location)

@@ -155,7 +155,6 @@ pub fn parse_package_name(s: &str) -> ParsePackageResult<PackageName> {
 //  向后兼容的 From<&str>（已弃用）
 // ============================================================================
 
-#[deprecated(since = "0.2.0", note = "请使用 FromStr 或 parse_package_name")]
 impl From<&str> for PackageName {
     fn from(s: &str) -> Self {
         parse_package_name(s).unwrap()

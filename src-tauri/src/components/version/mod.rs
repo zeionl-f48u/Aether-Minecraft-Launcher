@@ -173,18 +173,8 @@ impl VersionType {
     /// 从版本名称和元数据推断类型
     pub fn infer_from(name: &str, meta: &VersionInfo) -> Self {
         let name_lower = name.to_lowercase();
-        // 优先从元数据中读取类型
-        if let Some(meta_type) = meta.meta.as_ref().and_then(|m| m.version_type.as_ref()) {
-            match meta_type.to_lowercase().as_str() {
-                "release" | "snapshot" | "old_alpha" | "old_beta" => return VersionType::Vanilla,
-                "forge" => return VersionType::Forge,
-                "neoforge" => return VersionType::NeoForge,
-                "fabric" => return VersionType::Fabric,
-                "quilt" => return VersionType::QuiltMC,
-                "optifine" => return VersionType::Optifine,
-                _ => {}
-            }
-        }
+        // 优先从元数据中读取类型（VersionMeta does not have version_type, skip）
+        let _ = meta;
         // 启发式推断
         if name_lower.contains("forge") && !name_lower.contains("neoforge") {
             VersionType::Forge

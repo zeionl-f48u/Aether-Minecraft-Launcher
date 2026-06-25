@@ -14,8 +14,8 @@ use structs::mojang::{ProfileResponse, ProfileTexture};
 
 use self::structs::AuthMethod;
 use crate::{
-    http::HttpClient,
-    password::Password,
+    components::http::HttpClient,
+    components::password::Password,
     prelude::*,
 };
 
@@ -69,7 +69,7 @@ pub type AuthResult<T> = Result<T, AuthError>;
 ///
 /// # 示例
 /// ```rust
-/// # use scl_core::auth::generate_offline_uuid;
+/// # use aether_minecraft_launcher_lib::components::auth::generate_offline_uuid;
 /// # fn main() {
 /// assert_eq!(format!("{:x}", generate_offline_uuid("Steve")), "5627dd98e6be3c21b8a8e92344183641");
 /// assert_eq!(format!("{:x}", generate_offline_uuid("Alex")), "36532b5ec4423dbba24cc7e55d0f979a");
@@ -114,8 +114,8 @@ pub async fn parse_head_skin(skin_data: Vec<u8>) -> AuthResult<(Vec<u8>, Vec<u8>
         if width != 64 || (height != 32 && height != 64) {
             return Err(AuthError::Image(image::ImageError::Unsupported(
                 image::error::UnsupportedError::from_format_and_kind(
-                    image::ImageFormat::Png,
-                    format!("不支持的皮肤尺寸: {}x{}", width, height),
+                    image::error::ImageFormatHint::Name("PNG".to_string()),
+                    image::error::UnsupportedErrorKind::GenericFeature(format!("不支持的皮肤尺寸: {}x{}", width, height)),
                 ),
             )));
         }
@@ -173,7 +173,8 @@ pub async fn get_head_skin(uuid: &str) -> AuthResult<(Vec<u8>, Vec<u8>)> {
         .ok_or(AuthError::NoSkin)?;
 
     // Base64 解码
-    let texture_json = String::from_utf8_lossy(&BASE64_STANDARD.decode(&texture_prop.value)?);
+    let decoded = BASE64_STANDARD.decode(&texture_prop.value)?;
+    let texture_json = String::from_utf8_lossy(&decoded);
     let texture_data: ProfileTexture = serde_json::from_str(&texture_json)?;
 
     // 提取皮肤 URL
@@ -201,7 +202,7 @@ pub async fn get_head_skin(uuid: &str) -> AuthResult<(Vec<u8>, Vec<u8>)> {
 ///
 /// **此验证方式已被 Mojang 废弃**，请迁移到 Microsoft 账户验证。
 ///
-/// 建议使用 [`crate::auth::microsoft::start_auth`] 进行 Microsoft 正版验证。
+/// 建议使用 [`crate::components::auth::microsoft::start_auth`] 进行 Microsoft 正版验证。
 ///
 /// # 弃用原因
 /// Mojang 账户已全面迁移到 Microsoft 账户体系，此方法可能随时失效。
@@ -232,9 +233,11 @@ pub async fn auth_mojang(
         .await
         .map_err(|e| AuthError::Http(e.to_string()))?;
 
-    if !response.status().is_success() {
+    let status = response.status();
+    if !status.is_success() {
         // 尝试解析错误响应
-        if let Ok(error_resp) = response.json::<structs::mojang::ErrorResponse>().await {
+        let error_text = response.text().await.unwrap_or_default();
+        if let Ok(error_resp) = serde_json::from_str::<structs::mojang::ErrorResponse>(&error_text) {
             return Err(AuthError::AuthFailed(format!(
                 "{}: {}",
                 error_resp.error, error_resp.error_message
@@ -242,14 +245,14 @@ pub async fn auth_mojang(
         }
         return Err(AuthError::AuthFailed(format!(
             "认证失败 (HTTP {})",
-            response.status()
+            status
         )));
     }
 
     let auth_resp: structs::mojang::AuthenticateResponse = response
         .json()
         .await
-        .map_err(|e| AuthError::Json(e))?;
+        .map_err(|e| AuthError::Http(e.to_string()))?;
 
     let selected_profile = auth_resp
         .selected_profile
@@ -284,11 +287,12 @@ pub async fn refresh_auth(am: &mut AuthMethod, client_token: &str) -> AuthResult
         }
         AuthMethod::Microsoft { .. } => {
             // 调用微软登录模块的刷新方法
-            microsoft::leagcy::refresh_auth(am).await
-                .map_err(|e| AuthError::AuthFailed(e.to_string()))
+            microsoft::legacy::refresh_auth(am).await
+                .map_err(|e| AuthError::AuthFailed(e.to_string()))?;
+            Ok(true)
         }
         AuthMethod::AuthlibInjector { .. } => {
-            let new_am = crate::auth::authlib::refresh_token(am.clone(), client_token, false)
+            let new_am = crate::components::auth::authlib::refresh_token(am.clone(), client_token, false)
                 .await
                 .map_err(|e| AuthError::AuthFailed(e.to_string()))?;
             *am = new_am;

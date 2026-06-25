@@ -1,7 +1,7 @@
 [package]
 name = "aether-minecraft-launcher"
 version = "0.1.0"
-description = "A Tauri App"
+description = "Aether Minecraft Launcher - Tauri 2 应用"
 authors = ["you"]
 edition = "2021"
 
@@ -18,11 +18,91 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# Tauri 核心
+tauri = { version = "2", features = ["tracing"] }
 tauri-plugin-opener = "2"
+
+# 序列化
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+toml = "0.8"
 
+# 异步运行时
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
+futures-util = "0.3"
+
+# HTTP 客户端
+reqwest = { version = "0.12", features = ["json", "stream", "socks"] }
+url = "2"
+
+# 日志
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+log = "0.4"
+
+# 错误处理
+thiserror = "1"
+anyhow = "1"
+
+# 异步工具
+futures = "0.3"
+
+# 密码学
+sha1 = "0.10"
+md5 = "0.7"
+hex = "0.4"
+base64 = "0.22"
+
+# 图片处理
+image = "0.25"
+
+# 正则表达式
+regex = "1"
+lazy_static = "1"
+
+# ZIP 处理
+zip = "2"
+
+# 日期时间
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID
+uuid = { version = "1", features = ["v4"] }
+
+# URL 编码
+urlencoding = "2"
+
+# 延迟初始化
+once_cell = "1"
+
+# 目录检测
+dirs = "5"
+
+# 随机数（用于重试抖动）
+rand = "0.8"
+
+# Shell 命令解析
+shell-words = "1"
+
+# Windows 特定
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+windows = { version = "0.58", features = [
+    "Win32_System_SystemInformation",
+    "Win32_System_Performance",
+] }
+
+# macOS / Linux 特定
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Linux 依赖（可选）
+
+# 开发依赖
+[dev-dependencies]
+tempfile = "3"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

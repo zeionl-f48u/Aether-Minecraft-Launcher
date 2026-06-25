@@ -14,7 +14,8 @@ use thiserror::Error;
 use tokio::fs::{self, File};
 use tokio::io::AsyncWriteExt;
 
-use crate::http::HttpClient;
+use crate::components::http::{HttpClient, HttpClientConfig};
+use crate::components::progress::ReporterExt;
 use crate::prelude::*;
 
 // ============================================================================
@@ -129,7 +130,7 @@ async fn get_json<T: serde::de::DeserializeOwned>(
 
     let data = response.json::<T>()
         .await
-        .map_err(|e| CurseForgeError::Json(e))?;
+        .map_err(|e| CurseForgeError::Http(e.to_string()))?;
     Ok(data)
 }
 
@@ -289,7 +290,7 @@ pub async fn get_mod_icon_by_id(mod_id: u64) -> CurseForgeResult<image::DynamicI
 }
 
 /// 下载模组文件（支持进度报告）
-pub async fn download_mod<R: Reporter>(
+pub async fn download_mod<R: Reporter + ReporterExt>(
     url: &str,
     dest: &Path,
     reporter: Option<&R>,
@@ -338,7 +339,7 @@ pub async fn download_mod<R: Reporter>(
 
     if let Some(r) = reporter {
         r.set_progress(1.0);
-        r.set_message("下载完成".into());
+        r.set_message("下载完成".to_string());
     }
     Ok(())
 }
